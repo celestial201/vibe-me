@@ -794,40 +794,52 @@ export class ClassroomLmsService {
       { $set: { accepted: true, acceptedAt: new Date(), status: 'accepted', push_status: 'accepted' } }
     );
 
-    const versionId = enrollDoc?.version_id;
-    if (versionId) {
+    let versionId = enrollDoc?.version_id;
+    if (!versionId) {
       try {
-        const mainEnrollCol = await this.db.getCollection<any>('enrollments');
-        const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
-        const courseObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
-        const versionObjId = ObjectId.isValid(versionId) ? new ObjectId(versionId) : versionId;
-
-        await mainEnrollCol.updateOne(
-          {
-            userId: { $in: [userObjId, studentId] },
-            courseId: { $in: [courseObjId, courseId] },
-            courseVersionId: { $in: [versionObjId, versionId] },
-          },
-          {
-            $set: {
-              userId: userObjId,
-              courseId: courseObjId,
-              courseVersionId: versionObjId,
-              role: 'STUDENT',
-              status: 'active',
-              enrollmentDate: new Date(),
-              isDeleted: false,
-            },
-            $setOnInsert: {
-              percentCompleted: 0,
-              completedItemsCount: 0,
-            },
-          },
-          { upsert: true }
-        );
-      } catch (e) {
-        console.error('Failed to create main enrollment on classroom course acceptance:', e);
+        const courseRepoCol = await this.db.getCollection<any>('newCourse');
+        const cObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
+        const courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
+        versionId = courseDoc?.versions?.[0]?._id?.toString() ||
+                    courseDoc?.versions?.[0]?.versionId?.toString() ||
+                    courseDoc?.defaultVersionId?.toString() ||
+                    courseId;
+      } catch (_) {
+        versionId = courseId;
       }
+    }
+
+    try {
+      const mainEnrollCol = await this.db.getCollection<any>('enrollments');
+      const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+      const courseObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
+      const versionObjId = ObjectId.isValid(versionId) ? new ObjectId(versionId) : versionId;
+
+      await mainEnrollCol.updateOne(
+        {
+          userId: { $in: [userObjId, studentId] },
+          courseId: { $in: [courseObjId, courseId] },
+        },
+        {
+          $set: {
+            userId: userObjId,
+            courseId: courseObjId,
+            courseVersionId: versionObjId,
+            role: 'STUDENT',
+            status: 'active',
+            accepted: true,
+            enrollmentDate: new Date(),
+            isDeleted: false,
+          },
+          $setOnInsert: {
+            percentCompleted: 0,
+            completedItemsCount: 0,
+          },
+        },
+        { upsert: true }
+      );
+    } catch (e) {
+      console.error('Failed to create main enrollment on classroom course acceptance:', e);
     }
 
     emitEnrollmentAccepted(classroomId, studentId, courseId);
