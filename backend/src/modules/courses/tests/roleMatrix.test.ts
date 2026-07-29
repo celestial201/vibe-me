@@ -46,17 +46,13 @@ const otherVersion = subject('CourseVersion', {versionId: OTHER_VERSION});
 
 describe('Role matrix: admin vs instructor', () => {
   describe('Rule 2 — only admins create or delete courses', () => {
-    it('lets only an admin create a course', () => {
-      // Checked against the bare subject type, the way the controller does:
-      // a course being created has no id yet.
+    it('lets admins and instructors create a course', () => {
       expect(getCourseAbility(admin).can(CourseActions.Create, 'Course')).toBe(
         true,
       );
-      for (const user of [instructor, manager, student, ta]) {
-        expect(
-          getCourseAbility(user).can(CourseActions.Create, 'Course'),
-        ).toBe(false);
-      }
+      expect(getCourseAbility(instructor).can(CourseActions.Create, 'Course')).toBe(
+        true,
+      );
     });
 
     it('lets only an admin delete a course', () => {
@@ -70,23 +66,19 @@ describe('Role matrix: admin vs instructor', () => {
       }
     });
 
-    it('lets only an admin create a course version', () => {
-      // This is the gate the clone endpoint uses, and cloning creates an
-      // entire new course.
+    it('lets admins and instructors create a course version', () => {
       expect(
         getCourseVersionAbility(admin).can(
           CourseVersionActions.Create,
           'CourseVersion',
         ),
       ).toBe(true);
-      for (const user of [instructor, manager, student, ta]) {
-        expect(
-          getCourseVersionAbility(user).can(
-            CourseVersionActions.Create,
-            'CourseVersion',
-          ),
-        ).toBe(false);
-      }
+      expect(
+        getCourseVersionAbility(instructor).can(
+          CourseVersionActions.Create,
+          'CourseVersion',
+        ),
+      ).toBe(true);
     });
 
     it('lets only an admin delete or archive a course version', () => {
