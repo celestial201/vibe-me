@@ -693,7 +693,9 @@ export class EnrollmentService extends BaseService {
       );
 
       const activeEnrollments = enrollments.filter(enr =>
-        activeVersionIds.has(enr.courseVersionId.toString()),
+        activeVersionIds.has(enr.courseVersionId.toString()) ||
+        Boolean(enr.course) ||
+        enr.status === 'active'
       );
 
       // Create a map for quick lookup
@@ -808,7 +810,7 @@ export class EnrollmentService extends BaseService {
             status: enr.status,
             enrollmentDate: new Date(enr.enrollmentDate),
             assignedTimeSlot: enr.assignedTimeSlots,
-            course: this.filterCourseVersions(enr.course, enrolledVersionIds),
+            course: this.filterCourseVersions(enr.course, enrolledVersionIds) || enr.course,
             percentCompleted: enr.percentCompleted || 0,
             moduleNumber: enr.moduleNumber,
             sectionNumber: enr.sectionNumber,
