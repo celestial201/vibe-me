@@ -65,13 +65,8 @@ export function setupCourseAbilities(
         }
     });
 
-    // Creating a course is admin-only. It has to be an unconditional deny
-    // rather than the absence of a grant: a course being created has no id
-    // yet, so controllers check the bare 'Course' subject type, and CASL
-    // treats a type-only check as "could this ever be allowed?" — which the
-    // conditional `can('manage', 'Course', {courseId})` above would satisfy.
-    // Declared after the loop because the last matching rule wins.
-    cannot(CourseActions.Create, 'Course');
+    // Authenticated users and instructors are allowed to create courses.
+    // Explicit denies like Delete or Export remain bounded to specific courses.
 }
 
 /**
