@@ -1675,11 +1675,10 @@ const handleGoToNextItem = async () => {
   // Show proctoring declaration dialog before requesting permissions
   // Render the dialog overlay above the main content, not as a return branch
 
-  if (versionError || progressError) {
-
+  if (versionError) {
     return (
-      <Card className="mx-auto max-w-md">
-        <CardContent className="flex justify-center items-center h-64">
+      <Card className="mx-auto max-w-md my-12">
+        <CardContent className="flex justify-center items-center h-64 p-6">
           <div className="text-center">
             <div className="mb-2 text-destructive">
               <Target className="mx-auto w-8 h-8"></Target>
@@ -1699,6 +1698,23 @@ const handleGoToNextItem = async () => {
     return <MobileFallbackScreen />
 
   const modules = (courseVersionData as any)?.modules || [];
+
+  if (!versionLoading && (!modules || modules.length === 0)) {
+    return (
+      <Card className="mx-auto max-w-md my-12">
+        <CardContent className="flex justify-center items-center h-64 p-6">
+          <div className="text-center">
+            <BookOpen className="mx-auto w-10 h-10 text-muted-foreground mb-3" />
+            <p className="font-semibold text-lg text-foreground">No content available</p>
+            <p className="mt-1 text-sm text-muted-foreground">No content available for this module yet.</p>
+            <Button asChild className="mt-4" variant="outline">
+              <Link to="/student">Return to Dashboard</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const isLinearProgressionEnabled = proctoringData?.settings.linearProgressionEnabled ?? true;
 
