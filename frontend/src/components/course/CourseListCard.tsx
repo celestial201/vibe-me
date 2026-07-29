@@ -129,6 +129,11 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
       {/* Main content */}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          {!acceptedLocal && (
+            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] uppercase font-bold">
+              Invitation Pending
+            </Badge>
+          )}
           <h3
             className="truncate text-base font-bold leading-tight text-foreground sm:text-lg"
             title={enrollment?.course?.name || `Course ${index + 1}`}
@@ -137,32 +142,18 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
           </h3>
           {isCompleted && (
             <Badge className="border-0 bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">Completed</Badge>
-      <div className="flex flex-1 flex-col justify-center min-w-0 pr-2">
-        <div className="flex items-center gap-2">
-          {!acceptedLocal && (
-            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] uppercase font-bold">
-              Invitation Pending
-            </Badge>
           )}
           {enrollment.cohortName && (
-            <Badge variant="outline" className="w-fit text-[10px] text-muted-foreground">
-              {enrollment.cohortName}
-            </Badge>
+            <Badge variant="outline" className="border-primary/20 text-primary text-[10px]">{enrollment.cohortName}</Badge>
           )}
           {isMoreVideosSoon && (
-            <Badge variant="secondary" className="w-fit bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px]">
-              More videos soon
-            </Badge>
+            <Badge variant="secondary" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px]">More videos soon</Badge>
           )}
         </div>
 
-        <h3 className="mt-1 font-bold text-base text-foreground group-hover:text-primary transition-colors line-clamp-1">
-          {enrollment.course?.name || "Untitled Course"}
-        </h3>
-
-        {instructorName && (
-          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-            By {instructorName}
+        {(instructorName || variant === 'available') && (
+          <p className="mt-0.5 truncate text-xs text-muted-foreground sm:text-sm">
+            {instructorName || 'Discover and enroll'}
           </p>
         )}
 
