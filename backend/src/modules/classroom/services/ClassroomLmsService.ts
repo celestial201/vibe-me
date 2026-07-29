@@ -579,7 +579,13 @@ export class ClassroomLmsService {
   async pushCourseToClassroom(classroomId: string, instructorId: string, body: PushCourseBody) {
     const classroom = await this.classroomRepo.findById(classroomId);
     if (!classroom) throw new NotFoundError('Classroom not found');
-    if (classroom.instructorId !== instructorId) {
+
+    const classInstId = classroom.instructorId?.toString() ||
+                        (classroom as any).instructor_id?.toString() ||
+                        (classroom as any).owner_id?.toString() ||
+                        (classroom as any).created_by?.toString();
+
+    if (classInstId && classInstId !== String(instructorId)) {
       throw new ForbiddenError('Only the classroom instructor can push courses.');
     }
 
@@ -588,13 +594,32 @@ export class ClassroomLmsService {
       return { success: true, enrolledCount: 0 };
     }
 
+    let versionId = body.versionId;
+    if (!versionId) {
+      try {
+        const courseRepoCol = await this.db.getCollection<any>('newCourse');
+        const cObjId = ObjectId.isValid(body.courseId) ? new ObjectId(body.courseId) : body.courseId;
+        const courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
+        versionId = courseDoc?.versions?.[0]?._id?.toString() ||
+                    courseDoc?.versions?.[0]?.versionId?.toString() ||
+                    courseDoc?.defaultVersionId?.toString() ||
+                    body.courseId;
+      } catch (_) {
+        versionId = body.courseId;
+      }
+    }
+
     // 1. Assign course in classroom_courses collection
-    await this.classroomRepo.assignCourse({
-      classroomId,
-      courseId: body.courseId,
-      versionId: body.versionId,
-      assignedAt: new Date(),
-    });
+    try {
+      await this.classroomRepo.assignCourse({
+        classroomId,
+        courseId: body.courseId,
+        versionId: versionId || body.courseId,
+        assignedAt: new Date(),
+      });
+    } catch (assignErr) {
+      console.warn('Classroom course assignment already exists or failed:', assignErr);
+    }
 
     // 2. Perform bulk enrollment updates in classroom_member_enrollments
     const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
@@ -610,7 +635,7 @@ export class ClassroomLmsService {
             student_id: m.studentId,
             classroom_id: classroomId,
             course_id: body.courseId,
-            version_id: body.versionId,
+            version_id: versionId || body.courseId,
             source_classroom_id: classroomId,
             status: 'pending_acceptance',
             accepted: false,
@@ -653,7 +678,7 @@ export class ClassroomLmsService {
     emitCoursePushed(classroomId, studentIds, {
       classroomId,
       courseId: body.courseId,
-      versionId: body.versionId,
+      versionId: versionId || body.courseId,
       message: `New course invitation pushed to classroom`,
     });
 
@@ -661,10 +686,10 @@ export class ClassroomLmsService {
       for (const m of members) {
         try {
           const user = await this.userRepo.findById(m.studentId);
-          if (user?.email) {
+          if (user?.email && this.mailService) {
             const subject = `Course Enrollment: ${classroom.title}`;
             const html = `<p>Hello ${user.firstName || 'Student'},</p><p>Your instructor has pushed a new course to your classroom: <strong>${classroom.title}</strong>.</p><p>Log in to Vibe to accept your course enrollment and start learning.</p>`;
-            await this.mailService.sendMail({ to: user.email, subject, html });
+            await this.mailService.sendMail({ to: user.email, subject, html }).catch(() => null);
           }
         } catch (e) {
           console.error(`Failed to send email to student ${m.studentId}:`, e);
