@@ -70,16 +70,24 @@ export function useClassroomSocket(classroomId: string) {
       }
     };
 
+    const handleEnrollmentAccepted = () => {
+      qc.invalidateQueries({ queryKey: LMS_CK.analyticsRoster(classroomId) });
+      qc.invalidateQueries({ queryKey: LMS_CK.enrollmentStatus(classroomId) });
+      toast.info(`A student accepted their course enrollment invitation!`);
+    };
+
     socket.on('new_announcement', handleNewAnnouncement);
     socket.on('stream_updated', handleStreamUpdated);
     socket.on('new_assignment', handleNewAssignment);
     socket.on('submission_status_changed', handleSubmissionStatusChanged);
+    socket.on('enrollment_accepted', handleEnrollmentAccepted);
 
     return () => {
       socket.off('new_announcement', handleNewAnnouncement);
       socket.off('stream_updated', handleStreamUpdated);
       socket.off('new_assignment', handleNewAssignment);
       socket.off('submission_status_changed', handleSubmissionStatusChanged);
+      socket.off('enrollment_accepted', handleEnrollmentAccepted);
       socket.emit('leave_classroom', classroomId);
     };
   }, [classroomId, qc]);

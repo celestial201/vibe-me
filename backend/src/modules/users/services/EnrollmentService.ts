@@ -614,7 +614,62 @@ export class EnrollmentService extends BaseService {
         search,
       );
     }
-    if (!enrollments.length) return [];
+    if (!enrollments.length) {
+      if (role === 'STUDENT') {
+        try {
+          const classroomMemberEnrollCol = await this.database.getCollection<any>('classroom_member_enrollments');
+          const pendingDocs = await classroomMemberEnrollCol.find({
+            student_id: userId,
+            accepted: false,
+          }).toArray();
+
+          if (pendingDocs && pendingDocs.length > 0) {
+            const courseRepoCol = await this.database.getCollection<any>('newCourse');
+            const pendingList: any[] = [];
+
+            for (const doc of pendingDocs) {
+              const cId = doc.course_id?.toString();
+              if (cId) {
+                let courseDoc: any = null;
+                try {
+                  const cObjId = ObjectId.isValid(cId) ? new ObjectId(cId) : cId;
+                  courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
+                } catch (_) {}
+
+                pendingList.push({
+                  _id: doc._id.toString(),
+                  courseId: cId,
+                  courseVersionId: doc.version_id?.toString() || '',
+                  classroomId: doc.classroom_id?.toString(),
+                  role: 'STUDENT',
+                  status: 'PENDING_INVITATION',
+                  enrollmentStatus: 'PENDING_INVITATION',
+                  accepted: false,
+                  enrollmentDate: doc.enrolled_at ? new Date(doc.enrolled_at) : new Date(),
+                  assignedTimeSlot: [],
+                  course: {
+                    _id: cId,
+                    name: courseDoc?.name || 'Classroom Course Invitation',
+                    description: courseDoc?.description || 'Course pushed to your classroom. Click Accept Invitation to join.',
+                    instructors: courseDoc?.instructors || [],
+                  },
+                  percentCompleted: 0,
+                  completedItems: 0,
+                  contentCounts: { totalItems: 0 },
+                  hasNewItemsAfterCompletion: false,
+                  policyReacknowledgementRequired: false,
+                  hpSystem: false,
+                } as any);
+              }
+            }
+            return pendingList;
+          }
+        } catch (err) {
+          console.error('Error fetching pending classroom enrollments in empty getEnrollments:', err);
+        }
+      }
+      return [];
+    }
 
     const enrolledVersionIds: Set<string> = new Set(
       enrollments.map(e => e.courseVersionId.toString()),
@@ -701,7 +756,7 @@ export class EnrollmentService extends BaseService {
       //   ]),
       // );
 
-      return activeEnrollments.map(enr => {
+      const resultList = activeEnrollments.map(enr => {
         const versionIdStr = enr.courseVersionId.toString();
         const watchedKey = `${userId}-${enr.courseId.toString()}-${versionIdStr}-${enr.cohortId?.toString() || ''}`;
 
@@ -764,7 +819,61 @@ export class EnrollmentService extends BaseService {
             hpSystem,
           };
         }
-      });
+      }).filter(Boolean);
+
+      // Check for pending classroom course invitations
+      try {
+        const classroomMemberEnrollCol = await this.database.getCollection<any>('classroom_member_enrollments');
+        const pendingDocs = await classroomMemberEnrollCol.find({
+          student_id: userId,
+          accepted: false,
+        }).toArray();
+
+        if (pendingDocs && pendingDocs.length > 0) {
+          const activeCourseIds = new Set(resultList.map((e: any) => e.courseId));
+          const courseRepoCol = await this.database.getCollection<any>('newCourse');
+
+          for (const doc of pendingDocs) {
+            const cId = doc.course_id?.toString();
+            if (cId && !activeCourseIds.has(cId)) {
+              let courseDoc: any = null;
+              try {
+                const cObjId = ObjectId.isValid(cId) ? new ObjectId(cId) : cId;
+                courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
+              } catch (_) {}
+
+              resultList.push({
+                _id: doc._id.toString(),
+                courseId: cId,
+                courseVersionId: doc.version_id?.toString() || '',
+                classroomId: doc.classroom_id?.toString(),
+                role: 'STUDENT',
+                status: 'PENDING_INVITATION',
+                enrollmentStatus: 'PENDING_INVITATION',
+                accepted: false,
+                enrollmentDate: doc.enrolled_at ? new Date(doc.enrolled_at) : new Date(),
+                assignedTimeSlot: [],
+                course: {
+                  _id: cId,
+                  name: courseDoc?.name || 'Classroom Course Invitation',
+                  description: courseDoc?.description || 'Course pushed to your classroom. Click Accept Invitation to join.',
+                  instructors: courseDoc?.instructors || [],
+                },
+                percentCompleted: 0,
+                completedItems: 0,
+                contentCounts: { totalItems: 0 },
+                hasNewItemsAfterCompletion: false,
+                policyReacknowledgementRequired: false,
+                hpSystem: false,
+              } as any);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching pending classroom enrollments in getEnrollments:', err);
+      }
+
+      return resultList;
     }
     // Non-student
     return enrollments.map(enr => ({
