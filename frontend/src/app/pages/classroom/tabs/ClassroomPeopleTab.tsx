@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useGetClassroomStudents } from '@/hooks/classroom-hooks';
-import { useGetStudentInsights, useGetStudentAnalyticsRoster } from '@/hooks/classroom-lms-hooks';
+import { useGetStudentInsights, useGetStudentAnalyticsRoster, useClassroomSocket } from '@/hooks/classroom-lms-hooks';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ interface Props {
 }
 
 export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
+  useClassroomSocket(classroomId);
   const { data: simpleStudents, isLoading: isSimpleLoading } = useGetClassroomStudents(classroomId);
   const { data: roster, isLoading: isRosterLoading } = useGetStudentAnalyticsRoster(classroomId);
 

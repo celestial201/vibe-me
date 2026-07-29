@@ -636,10 +636,16 @@ export class EnrollmentService extends BaseService {
                   courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
                 } catch (_) {}
 
+                const vId = doc.version_id?.toString() ||
+                            courseDoc?.versions?.[0]?._id?.toString() ||
+                            courseDoc?.versions?.[0]?.versionId?.toString() ||
+                            courseDoc?.defaultVersionId?.toString() ||
+                            cId;
+
                 pendingList.push({
                   _id: doc._id.toString(),
                   courseId: cId,
-                  courseVersionId: doc.version_id?.toString() || '',
+                  courseVersionId: vId,
                   classroomId: doc.classroom_id?.toString(),
                   role: 'STUDENT',
                   status: 'PENDING_INVITATION',
@@ -842,10 +848,16 @@ export class EnrollmentService extends BaseService {
                 courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
               } catch (_) {}
 
+              const vId = doc.version_id?.toString() ||
+                          courseDoc?.versions?.[0]?._id?.toString() ||
+                          courseDoc?.versions?.[0]?.versionId?.toString() ||
+                          courseDoc?.defaultVersionId?.toString() ||
+                          cId;
+
               resultList.push({
                 _id: doc._id.toString(),
                 courseId: cId,
-                courseVersionId: doc.version_id?.toString() || '',
+                courseVersionId: vId,
                 classroomId: doc.classroom_id?.toString(),
                 role: 'STUDENT',
                 status: 'PENDING_INVITATION',

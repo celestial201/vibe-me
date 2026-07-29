@@ -36,7 +36,7 @@ const StudentTimeslotModal = lazy(() =>
 // Helper function to check if current time is within assigned time slot
 export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard', className }: CourseCardProps) => {
   // Add null checks to prevent errors when enrollment data is incomplete
-  if (!enrollment || !enrollment.courseId || !enrollment.courseVersionId) {
+  if (!enrollment || !enrollment.courseId) {
     console.error('Invalid enrollment data:', enrollment);
     return null;
   }
