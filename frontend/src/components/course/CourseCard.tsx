@@ -15,7 +15,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState, lazy, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { classroomLmsApi, BASE_URL } from "@/services/classroom-lms-api";
-import { bufferToHex } from "@/utils/helpers";
+import { normalizeIdString } from "@/utils/helpers";
 import { enterFullscreen, exitFullscreen } from "@/utils/fullscreen";
 import { cn } from "@/utils/utils";
 import type { CourseCardProps } from '@/types/course.types';
@@ -36,13 +36,18 @@ const StudentTimeslotModal = lazy(() =>
 // Helper function to check if current time is within assigned time slot
 export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard', className }: CourseCardProps) => {
   // Add null checks to prevent errors when enrollment data is incomplete
-  if (!enrollment || !enrollment.courseId) {
+  if (!enrollment || (!enrollment.courseId && !(enrollment as any).course_id && !(enrollment as any)._id)) {
     console.error('Invalid enrollment data:', enrollment);
     return null;
   }
-  const courseId = bufferToHex(enrollment.courseId as string);
-  const versionId = bufferToHex(enrollment.courseVersionId as string) || "";
-  const cohortId = enrollment?.cohortId ? (typeof enrollment.cohortId === 'string' ? enrollment.cohortId : bufferToHex(enrollment.cohortId as any)) : "";
+  
+  const rawCourseId = (enrollment as any).course_id?._id || (enrollment as any).course_id || (enrollment as any).courseId?._id || (enrollment as any).courseId || (enrollment as any).course?._id;
+  const courseId = normalizeIdString(rawCourseId) || '';
+  
+  const rawVersionId = (enrollment as any).courseVersionId?._id || (enrollment as any).courseVersionId || (enrollment as any).versionId?._id || (enrollment as any).versionId || (enrollment as any).versionDetails?.[0]?._id;
+  const versionId = normalizeIdString(rawVersionId) || '';
+  
+  const cohortId = enrollment?.cohortId ? (typeof enrollment.cohortId === 'string' ? enrollment.cohortId : normalizeIdString(enrollment.cohortId as any)) : "";
   // const module_number = enrollment.moduleNumber || "";
   // const section_number = enrollment.sectionNumber || "";
   // const item_type = enrollment.itemType || "VIDEO";
@@ -79,23 +84,27 @@ export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard'
 
   // Also get counts from courseVersionData as fallback
   const versionItemCounts = (courseVersionData as any)?.itemCounts || {};
-  const totalLessons = Number(contentCounts.totalItems || (courseVersionData as any)?.totalItems || 0);
+  const totalLessons = Number(contentCounts.totalItems || (courseVersionData as any)?.totalItems || (enrollment.course as any)?.totalItems || (enrollment as any).course_id?.totalItems || 0);
 
   const videoCount = Number(
     (contentCounts as any).videos ?? itemCounts.VIDEO ?? itemCounts.video ?? itemCounts.videos ??
-    versionItemCounts.VIDEO ?? versionItemCounts.video ?? versionItemCounts.videos ?? 0
+    versionItemCounts.VIDEO ?? versionItemCounts.video ?? versionItemCounts.videos ?? 
+    (enrollment.course as any)?.videos ?? (enrollment as any).course_id?.videos ?? 0
   );
   const quizCount = Number(
     (contentCounts as any).quizzes ?? itemCounts.QUIZ ?? itemCounts.quiz ?? itemCounts.quizzes ??
-    versionItemCounts.QUIZ ?? versionItemCounts.quiz ?? versionItemCounts.quizzes ?? 0
+    versionItemCounts.QUIZ ?? versionItemCounts.quiz ?? versionItemCounts.quizzes ?? 
+    (enrollment.course as any)?.quizzes ?? (enrollment as any).course_id?.quizzes ?? 0
   );
   const articleCount = Number(
     (contentCounts as any).articles ?? itemCounts.BLOG ?? itemCounts.blog ?? itemCounts.articles ??
-    versionItemCounts.BLOG ?? versionItemCounts.blog ?? versionItemCounts.articles ?? 0
+    versionItemCounts.BLOG ?? versionItemCounts.blog ?? versionItemCounts.articles ?? 
+    (enrollment.course as any)?.articles ?? (enrollment as any).course_id?.articles ?? 0
   );
   const projectCount = Number(
     (contentCounts as any).project ?? (contentCounts as any).projects ?? itemCounts.PROJECT ?? itemCounts.project ?? itemCounts.projects ??
-    versionItemCounts.PROJECT ?? versionItemCounts.project ?? versionItemCounts.projects ?? 0
+    versionItemCounts.PROJECT ?? versionItemCounts.project ?? versionItemCounts.projects ?? 
+    (enrollment.course as any)?.projects ?? (enrollment as any).course_id?.projects ?? 0
   );
 
   const modules = (courseVersionData as any)?.modules || [];
@@ -143,17 +152,11 @@ export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard'
     if (e) e.stopPropagation();
     setIsAccepting(true);
     try {
-      const classroomId = (enrollment as any).classroomId || (enrollment as any).sourceClassroomId;
+      const classroomId = (enrollment as any).classroomId || (enrollment as any).sourceClassroomId || (enrollment as any).classroom_id;
       if (classroomId && courseId) {
         await classroomLmsApi.acceptCourseEnrollment(classroomId, courseId);
       } else {
-        await fetch(`${BASE_URL}/classroom/courses/${courseId}/accept`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
+        throw new Error("Cannot accept course: Missing classroomId. Direct course acceptance is not supported.");
       }
       setAcceptedLocal(true);
       toast.success("Invitation accepted! You are now enrolled.");
@@ -283,9 +286,9 @@ export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard'
               <CardContent className="flex flex-col p-4">
                 <h3
                   className="mb-1 min-h-[2.75rem] font-bold text-foreground text-lg break-words line-clamp-2 leading-tight"
-                  title={enrollment.course?.name || (enrollment.course as any)?.title || `Course ${index + 1}`}
+                  title={enrollment.course?.name || (enrollment.course as any)?.title || (enrollment as any).course_id?.name || (enrollment as any).course_id?.title || (enrollment as any).courseName || `Course ${index + 1}`}
                 >
-                  {enrollment.course?.name || (enrollment.course as any)?.title || `Course ${index + 1}`}
+                  {enrollment.course?.name || (enrollment.course as any)?.title || (enrollment as any).course_id?.name || (enrollment as any).course_id?.title || (enrollment as any).courseName || `Course ${index + 1}`}
                 </h3>
                 <div className="mt-3 space-y-4">
                   {variant !== 'available' && (

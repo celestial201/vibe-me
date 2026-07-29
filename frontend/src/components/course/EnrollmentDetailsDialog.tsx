@@ -50,8 +50,8 @@ export function EnrollmentDetailsDialog({
 
 
   const matchedEnrollment = enrollmentDetails?.enrollments?.find((entry: any) => {
-    const entryId = normalizeId(entry?._id);
-    const entryCohortId = normalizeId(entry?.cohortId);
+    const entryId = normalizeIdString(entry?._id);
+    const entryCohortId = normalizeIdString(entry?.cohortId);
 
     if (enrollmentId && entryId === enrollmentId) {
       return true;

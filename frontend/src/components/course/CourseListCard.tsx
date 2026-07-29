@@ -10,7 +10,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, lazy, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { classroomLmsApi, BASE_URL } from "@/services/classroom-lms-api";
-import { bufferToHex } from "@/utils/helpers";
+import { normalizeIdString } from "@/utils/helpers";
 import { enterFullscreen, exitFullscreen } from "@/utils/fullscreen";
 import { cn } from "@/utils/utils";
 import type { CourseCardProps } from '@/types/course.types';
@@ -30,9 +30,9 @@ const StudentTimeslotModal = lazy(() =>
 export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, variant = 'dashboard', className }: CourseCardProps) => {
   if (!enrollment || !enrollment.courseId) return null;
 
-  const courseId = bufferToHex(enrollment.courseId as string);
-  const versionId = bufferToHex(enrollment.courseVersionId as string) || "";
-  const cohortId = enrollment?.cohortId ? (typeof enrollment.cohortId === 'string' ? enrollment.cohortId : bufferToHex(enrollment.cohortId as any)) : "";
+  const courseId = normalizeIdString(enrollment.courseId as string) || "";
+  const versionId = normalizeIdString(enrollment.courseVersionId as string) || "";
+  const cohortId = enrollment?.cohortId ? (typeof enrollment.cohortId === 'string' ? enrollment.cohortId : normalizeIdString(enrollment.cohortId as any)) : "";
 
   const { data: courseVersionData } = useCourseVersionById(versionId, variant !== 'available', cohortId || undefined);
   const { setCurrentCourse } = useCourseStore();

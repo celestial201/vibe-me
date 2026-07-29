@@ -860,13 +860,18 @@ export function useCreateCourseVersion(): {
 
 
 
-function extractIdString(val: any): string {
+function extractIdString(val: unknown): string {
   if (!val) return '';
-  if (typeof val === 'string') return val;
-  if (typeof val === 'object') {
-    return (val._id || val.id || val.versionId || val.courseId || '').toString();
+  if (typeof val === 'string') return val === '[object Object]' ? '' : val;
+  if (typeof val === 'object' && val !== null) {
+    const obj = val as Record<string, unknown>;
+    const candidate = obj._id || obj.id || obj.versionId || obj.courseId || obj.courseVersionId;
+    if (candidate) {
+      const str = String(candidate);
+      return str === '[object Object]' ? '' : str;
+    }
   }
-  return String(val);
+  return '';
 }
 
 // GET /courses/versions/{id}
@@ -6313,21 +6318,25 @@ export function useCancelBooking() {
 // transient failure never locks a student out — the backend gate is the backstop.
 export function useCheckTimeSlotAccessOnDemand() {
   const check = async (
-    courseId: string,
-    courseVersionId: string,
+    courseId: any,
+    courseVersionId: any,
   ): Promise<{ canAccess: boolean; message?: string }> => {
     try {
-      const url = `${import.meta.env.VITE_BASE_URL}/timeslots/check-access/${courseId}/${courseVersionId}`;
+      const cId = typeof courseId === 'object' ? (courseId?._id || courseId?.id || '') : (courseId || '');
+      const vId = typeof courseVersionId === 'object' ? (courseVersionId?._id || courseVersionId?.id || '') : (courseVersionId || '');
+      if (!cId || !vId) return { canAccess: false, message: 'Missing or invalid course access information' }; // Fail-closed defensive fallback
+      
+      const url = `${import.meta.env.VITE_BASE_URL}/timeslots/check-access/${cId}/${vId}`;
       const res = await fetch(url, {
         headers: {
           authorization: `Bearer ${localStorage.getItem('firebase-auth-token')}`,
         },
       });
-      if (!res.ok) return { canAccess: true };
-      const data = await res.json().catch(() => ({ canAccess: true }));
+      if (!res.ok) return { canAccess: false, message: 'Failed to verify course access.' };
+      const data = await res.json().catch(() => ({ canAccess: false, message: 'Invalid server response.' }));
       return { canAccess: data?.canAccess !== false, message: data?.message };
     } catch {
-      return { canAccess: true };
+      return { canAccess: false, message: 'Network error verifying access.' };
     }
   };
   return { check };
@@ -6371,7 +6380,7 @@ export function useCheckTimeSlotAccess(
 }
 
 // GET /users/enrollments
-export function useUserEnrollmentsDetails(enabled: boolean = true, search?: string, role = "STUDENT", courseVersionIdInput?: any, cohortId?: string): {
+export function useUserEnrollmentsDetails(enabled: boolean = true, search?: string, role = "STUDENT", courseVersionIdInput?: unknown, cohortId?: string): {
   data: components['schemas']['EnrollmentResponse'] | undefined,
   isLoading: boolean,
   error: string | null,
