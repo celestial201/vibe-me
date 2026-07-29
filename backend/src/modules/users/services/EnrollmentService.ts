@@ -823,7 +823,14 @@ export class EnrollmentService extends BaseService {
         let courseDoc: any = null;
         try {
           const cObjId = ObjectId.isValid(cId) ? new ObjectId(cId) : cId;
-          courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
+          courseDoc = await courseRepoCol.findOne({
+            $or: [
+              { _id: cObjId as any },
+              { _id: cId },
+              { id: cId },
+              { courseId: cId }
+            ]
+          });
         } catch (_) {}
 
         const vId = doc.version_id?.toString() ||
@@ -831,6 +838,8 @@ export class EnrollmentService extends BaseService {
                     courseDoc?.versions?.[0]?.versionId?.toString() ||
                     courseDoc?.defaultVersionId?.toString() ||
                     cId;
+
+        const resolvedTitle = courseDoc?.name || courseDoc?.title || courseDoc?.courseName || 'Classroom Course';
 
         result.push({
           _id: doc._id.toString(),
@@ -845,13 +854,16 @@ export class EnrollmentService extends BaseService {
           assignedTimeSlot: [],
           course: {
             _id: cId,
-            name: courseDoc?.name || (isAccepted ? 'Enrolled Course' : 'Classroom Course Invitation'),
+            name: resolvedTitle,
+            title: resolvedTitle,
             description: courseDoc?.description || '',
             instructors: courseDoc?.instructors || [],
+            thumbnail: courseDoc?.thumbnail || courseDoc?.image || '',
+            modules: courseDoc?.modules || [],
           },
           percentCompleted: doc.progress || doc.progress_percentage || 0,
           completedItems: 0,
-          contentCounts: { totalItems: 0 },
+          contentCounts: { totalItems: courseDoc?.totalItems || 0 },
           hasNewItemsAfterCompletion: false,
           policyReacknowledgementRequired: false,
           hpSystem: false,

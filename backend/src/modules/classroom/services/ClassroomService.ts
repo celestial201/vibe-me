@@ -93,9 +93,10 @@ export class ClassroomService {
 
   async deleteClassroom(id: string, instructorId: string): Promise<void> {
     await this._requireOwner(id, instructorId);
-    // Cascade
+    // Cascade delete members, courses, member enrollments, and artifacts
     await this.repo.deleteMembersByClassroom(id);
     await this.repo.deleteCoursesByClassroom(id);
+    await this.repo.deleteMemberEnrollmentsByClassroom(id);
     await this.repo.delete(id);
   }
 
