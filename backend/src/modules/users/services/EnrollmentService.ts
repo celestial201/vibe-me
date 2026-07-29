@@ -1137,12 +1137,37 @@ export class EnrollmentService extends BaseService {
         userId,
         session,
       );
-      return result.map(enrollment => ({
+      const mapped = result.map(enrollment => ({
         ...enrollment,
         _id: enrollment._id.toString(),
         courseId: enrollment.courseId.toString(),
         courseVersionId: enrollment.courseVersionId.toString(),
       }));
+
+      try {
+        const classroomMemberEnrollCol = await this.database.getCollection<any>('classroom_member_enrollments');
+        const acceptedDocs = await classroomMemberEnrollCol.find({ student_id: userId, accepted: true }).toArray();
+        if (acceptedDocs && acceptedDocs.length > 0) {
+          const existingVersionIds = new Set(mapped.map(e => e.courseVersionId));
+          for (const doc of acceptedDocs) {
+            const cId = doc.course_id?.toString();
+            const vId = doc.version_id?.toString() || cId;
+            if (cId && vId && !existingVersionIds.has(vId)) {
+              mapped.push({
+                _id: doc._id.toString(),
+                userId,
+                courseId: cId,
+                courseVersionId: vId,
+                role: 'STUDENT',
+                status: 'active',
+                enrollmentDate: doc.enrolled_at ? new Date(doc.enrolled_at) : new Date(),
+              } as any);
+            }
+          }
+        }
+      } catch (_) {}
+
+      return mapped;
     });
   }
 
