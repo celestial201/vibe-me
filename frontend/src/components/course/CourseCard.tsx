@@ -1,4 +1,4 @@
-import { Clock, Trophy, Medal, Info, ExternalLink, Copy, MessageCircle, Users, Check, Sparkles, Play, Activity, Shield as LucideShield, MoreHorizontal } from "lucide-react";
+import { Clock, Trophy, Medal, Info, ExternalLink, Copy, MessageCircle, Users, Check, Sparkles, Play, Activity, Shield as LucideShield, MoreHorizontal, CheckCircle2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,8 @@ import { toast } from "sonner";
 import { useCourseStore } from "@/store/course-store";
 import { useNavigate } from "@tanstack/react-router";
 import { useState, lazy, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { classroomLmsApi, BASE_URL } from "@/services/classroom-lms-api";
 import { bufferToHex } from "@/utils/helpers";
 import { enterFullscreen, exitFullscreen } from "@/utils/fullscreen";
 import { cn } from "@/utils/utils";
@@ -125,9 +127,45 @@ export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard'
   const isRankVisible = variant !== 'available' && isNotGuruSetu;
   const isTimeslotActive = variant !== 'available' && isNotGuruSetu;
 
-  // const supportLink = enrollment?.course?.supportLink || "";
+  const isPending = enrollment?.accepted === false ||
+                    (enrollment as any)?.enrollmentStatus === 'PENDING_INVITATION' ||
+                    (enrollment as any)?.status === 'PENDING_INVITATION';
 
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [acceptedLocal, setAcceptedLocal] = useState(!isPending);
+  const queryClient = useQueryClient();
 
+  useEffect(() => {
+    setAcceptedLocal(!isPending);
+  }, [isPending]);
+
+  const handleAccept = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsAccepting(true);
+    try {
+      const classroomId = (enrollment as any).classroomId || (enrollment as any).sourceClassroomId;
+      if (classroomId && courseId) {
+        await classroomLmsApi.acceptCourseEnrollment(classroomId, courseId);
+      } else {
+        await fetch(`${BASE_URL}/classroom/courses/${courseId}/accept`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+      }
+      setAcceptedLocal(true);
+      toast.success("Invitation accepted! You are now enrolled.");
+      queryClient.invalidateQueries({ queryKey: ["get", "/users/enrollments"] });
+      queryClient.invalidateQueries({ queryKey: ["user-enrollments"] });
+    } catch (err) {
+      console.error("Failed to accept enrollment:", err);
+      toast.error("Failed to accept invitation. Please try again.");
+    } finally {
+      setIsAccepting(false);
+    }
+  };
 
   useEffect(() => {
     if (!enrollment) return
@@ -273,25 +311,45 @@ export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard'
 
                   <div className="gap-3 grid grid-cols-1 pt-1">
                     <div className="flex items-center gap-2">
-                      <Button
-                        onClick={(e) => { e.stopPropagation(); handleContinue(); }}
-                        className={cn(
-                          "flex flex-1 justify-center items-center gap-2 shadow-md rounded-xl h-10 font-bold text-sm active:scale-95 transition-all duration-300",
-                          variant === 'available' ? "bg-primary text-primary-foreground" : isStart ? "bg-[#22C55E] text-white" : "bg-primary text-primary-foreground hover:bg-primary/90"
-                        )}
-                      >
-                        {variant === 'available' ? (
-                          <span className="flex items-center gap-2">
-                            Register Now
-                            <ExternalLink className="w-4 h-4" />
-                          </span>
-                        ) : (
-                          <>
-                            {isStart ? 'Start Course' : isCompleted ? 'View Course' : 'Continue'}
-                            <Play className="fill-current w-4 h-4" />
-                          </>
-                        )}
-                      </Button>
+                      {!acceptedLocal ? (
+                        <Button
+                          onClick={(e) => { e.stopPropagation(); handleAccept(e); }}
+                          disabled={isAccepting}
+                          className="flex flex-1 justify-center items-center gap-2 shadow-md rounded-xl h-10 font-bold text-sm bg-amber-600 hover:bg-amber-700 text-white animate-pulse hover:animate-none"
+                        >
+                          {isAccepting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              Accepting...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-4 h-4" />
+                              Accept Invitation
+                            </>
+                          )}
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={(e) => { e.stopPropagation(); handleContinue(); }}
+                          className={cn(
+                            "flex flex-1 justify-center items-center gap-2 shadow-md rounded-xl h-10 font-bold text-sm active:scale-95 transition-all duration-300",
+                            variant === 'available' ? "bg-primary text-primary-foreground" : isStart ? "bg-[#22C55E] text-white" : "bg-primary text-primary-foreground hover:bg-primary/90"
+                          )}
+                        >
+                          {variant === 'available' ? (
+                            <span className="flex items-center gap-2">
+                              Register Now
+                              <ExternalLink className="w-4 h-4" />
+                            </span>
+                          ) : (
+                            <>
+                              {isStart ? 'Start Course' : isCompleted ? 'View Course' : 'Continue'}
+                              <Play className="fill-current w-4 h-4" />
+                            </>
+                          )}
+                        </Button>
+                      )}
 
                       {variant !== 'available' && (
                         <Button

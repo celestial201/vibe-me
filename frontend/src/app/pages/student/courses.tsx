@@ -3,6 +3,7 @@ import { Search, X, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUserEnrollments, usePublicCourses } from "@/hooks/hooks";
+import { getSocketClient } from "@/hooks/classroom-lms-hooks";
 import { useAuthStore } from "@/store/auth-store";
 
 // Import new components
@@ -13,7 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { stopAllStreams } from "@/lib/MediaRegistry";
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, Sparkles } from "lucide-react";
 import { cn } from "@/utils/utils";
 import { TooltipProvider as UTS_TooltipProvider, Tooltip as UTS_Tooltip, TooltipContent as UTS_TooltipContent, TooltipTrigger as UTS_TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -74,21 +75,51 @@ export default function StudentCourses() {
 
   const enrollments = enrollmentsData?.enrollments || [];
   const totalPages = enrollmentsData?.totalPages || 1;
-  // const currentPageFromAPI = enrollmentsData?.currentPage || 1;
-  const totalDocuments = enrollmentsData?.totalDocuments || 0;
-  // Filter enrollments based on completion status
+
+  const pendingEnrollments = useMemo(() => {
+    return enrollments.filter((e: any) =>
+      e.accepted === false ||
+      e.enrollmentStatus === 'PENDING_INVITATION' ||
+      e.status === 'PENDING_INVITATION'
+    );
+  }, [enrollments]);
+
   const activeEnrollments = useMemo(() => {
-    return enrollments.filter(enrollment => 
-      enrollment.percentCompleted !== 100  ||   
-      enrollment.hasNewItemsAfterCompletion === true)
-   ;
+    return enrollments.filter((e: any) =>
+      e.accepted !== false &&
+      e.enrollmentStatus !== 'PENDING_INVITATION' &&
+      e.status !== 'PENDING_INVITATION' &&
+      (e.percentCompleted !== 100 || e.hasNewItemsAfterCompletion === true)
+    );
   }, [enrollments]);
 
   const completedEnrollments = useMemo(() => {
-    return enrollments.filter(enrollment => 
-      enrollment.percentCompleted === 100 && 
-      !enrollment.hasNewItemsAfterCompletion);
+    return enrollments.filter((e: any) =>
+      e.accepted !== false &&
+      e.enrollmentStatus !== 'PENDING_INVITATION' &&
+      e.status !== 'PENDING_INVITATION' &&
+      e.percentCompleted === 100 &&
+      !e.hasNewItemsAfterCompletion
+    );
   }, [enrollments]);
+
+  const activeCountTotal = activeEnrollments.length;
+
+  useEffect(() => {
+    if (!token) return;
+    try {
+      const socket = getSocketClient();
+      const handleRefetch = () => {
+        refetch();
+      };
+      socket.on('course_pushed', handleRefetch);
+      socket.on('new_notification', handleRefetch);
+      return () => {
+        socket.off('course_pushed', handleRefetch);
+        socket.off('new_notification', handleRefetch);
+      };
+    } catch (_) {}
+  }, [token, refetch]);
 
   // Update current page when API response changes
   // useEffect(() => {
@@ -183,7 +214,7 @@ export default function StudentCourses() {
             <div className="flex items-center gap-3">
               <TabsList className="md:w-fit w-full">
                 <TabsTrigger value="enrolled" className="cursor-pointer">
-                  Enrolled ({isLoading ? "..." : totalDocuments})
+                  Enrolled ({isLoading ? "..." : activeCountTotal})
                 </TabsTrigger>
                 <TabsTrigger value="available" className="cursor-pointer">
                   Available ({loadingPublic ? "..." : (publicCoursesData?.totalDocuments || 0)})
@@ -242,20 +273,43 @@ export default function StudentCourses() {
                   <CourseCardSkeleton key={i} variant="dashboard" />
                 ))}
               </div>
-            ) : activeEnrollments.length > 0 ? (
+            ) : (activeEnrollments.length > 0 || pendingEnrollments.length > 0) ? (
               <>
-                <div className={cn(
-                  "grid gap-6",
-                  viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
-                )}>
-                  {activeEnrollments.map((enrollment, index) =>
-                    renderEnrollmentCard(enrollment, index, isLoading)
-                  )}
-                </div>
+                {pendingEnrollments.length > 0 && (
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3 mb-6">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-sm">
+                      <Sparkles className="h-4 w-4" />
+                      Course Invitations ({pendingEnrollments.length})
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Your instructor has pushed the following course(s) to your classroom. Click <strong>Accept Invitation</strong> to start learning.
+                    </p>
+                    <div className={cn(
+                      "grid gap-6 mt-2",
+                      viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
+                    )}>
+                      {pendingEnrollments.map((enrollment, index) =>
+                        renderEnrollmentCard(enrollment, index, false)
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeEnrollments.length > 0 && (
+                  <div className={cn(
+                    "grid gap-6",
+                    viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
+                  )}>
+                    {activeEnrollments.map((enrollment, index) =>
+                      renderEnrollmentCard(enrollment, index, isLoading)
+                    )}
+                  </div>
+                )}
+
                 <Pagination
                   currentPage={currentPage}
                   totalPages={totalPages}
-                  totalDocuments={totalDocuments}
+                  totalDocuments={activeCountTotal}
                   onPageChange={handlePageChange}
                 />
               </>

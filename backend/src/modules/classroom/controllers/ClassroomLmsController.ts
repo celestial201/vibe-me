@@ -294,6 +294,7 @@ export class ClassroomLmsController {
 
   @OpenAPI({ summary: 'Student accepts course enrollment' })
   @Post('/:id/courses/:courseId/accept')
+  @Patch('/:id/courses/:courseId/accept')
   async acceptCourseEnrollment(
     @Params() params: { id: string; courseId: string },
     @CurrentUser() user: IUser,

@@ -1,5 +1,6 @@
 import { inject, injectable } from 'inversify';
 import { BadRequestError, ForbiddenError, NotFoundError } from 'routing-controllers';
+import { ObjectId } from 'mongodb';
 import { CLASSROOM_TYPES } from '../types.js';
 import { ClassroomRepository } from '../repositories/providers/mongodb/ClassroomRepository.js';
 import { AnnouncementRepository } from '../repositories/providers/mongodb/AnnouncementRepository.js';
@@ -29,6 +30,8 @@ import {
   emitNewAssignment,
   emitSubmissionStatusChanged,
   emitNewNotification,
+  emitCoursePushed,
+  emitEnrollmentAccepted,
 } from '#root/shared/socket/socket.js';
 import {
   IClassroom,
@@ -645,7 +648,15 @@ export class ClassroomLmsService {
       console.error('Failed to post stream announcement for course push:', err);
     }
 
-    // 4. Dispatch emails if requested
+    // 4. Dispatch real-time socket notifications & emails
+    const studentIds = members.map(m => String(m.studentId));
+    emitCoursePushed(classroomId, studentIds, {
+      classroomId,
+      courseId: body.courseId,
+      versionId: body.versionId,
+      message: `New course invitation pushed to classroom`,
+    });
+
     if (body.sendEmails) {
       for (const m of members) {
         try {
@@ -733,10 +744,54 @@ export class ClassroomLmsService {
 
   async acceptCourseEnrollment(classroomId: string, studentId: string, courseId: string) {
     const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+    const enrollDoc = await enrollmentsCol.findOne({
+      student_id: studentId,
+      classroom_id: classroomId,
+      course_id: courseId,
+    });
+
     await enrollmentsCol.updateOne(
       { student_id: studentId, classroom_id: classroomId, course_id: courseId },
       { $set: { accepted: true, acceptedAt: new Date(), status: 'accepted', push_status: 'accepted' } }
     );
+
+    const versionId = enrollDoc?.version_id;
+    if (versionId) {
+      try {
+        const mainEnrollCol = await this.db.getCollection<any>('enrollments');
+        const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+        const courseObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
+        const versionObjId = ObjectId.isValid(versionId) ? new ObjectId(versionId) : versionId;
+
+        await mainEnrollCol.updateOne(
+          {
+            userId: { $in: [userObjId, studentId] },
+            courseId: { $in: [courseObjId, courseId] },
+            courseVersionId: { $in: [versionObjId, versionId] },
+          },
+          {
+            $set: {
+              userId: userObjId,
+              courseId: courseObjId,
+              courseVersionId: versionObjId,
+              role: 'STUDENT',
+              status: 'active',
+              enrollmentDate: new Date(),
+              isDeleted: false,
+            },
+            $setOnInsert: {
+              percentCompleted: 0,
+              completedItemsCount: 0,
+            },
+          },
+          { upsert: true }
+        );
+      } catch (e) {
+        console.error('Failed to create main enrollment on classroom course acceptance:', e);
+      }
+    }
+
+    emitEnrollmentAccepted(classroomId, studentId, courseId);
     return { success: true };
   }
 
