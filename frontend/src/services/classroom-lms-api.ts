@@ -348,7 +348,10 @@ export const classroomLmsApi = {
       },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error('Failed to push course to classroom');
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || errJson.error || 'Failed to push course to classroom');
+    }
     return res.json();
   },
 
