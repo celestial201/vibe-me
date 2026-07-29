@@ -176,9 +176,9 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
           )}
           <h3
             className="truncate text-base font-bold leading-tight text-foreground sm:text-lg"
-            title={enrollment?.course?.name || `Course ${index + 1}`}
+            title={enrollment?.course?.name || enrollment?.course?.title || `Course ${index + 1}`}
           >
-            {enrollment?.course?.name || `Course ${index + 1}`}
+            {enrollment?.course?.name || enrollment?.course?.title || `Course ${index + 1}`}
           </h3>
           {isCompleted && (
             <Badge className="border-0 bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">Completed</Badge>

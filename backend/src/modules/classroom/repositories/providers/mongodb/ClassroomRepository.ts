@@ -286,6 +286,61 @@ export class ClassroomRepository implements IClassroomRepository {
     await this.courses.deleteMany({ classroomId: toObjectId(classroomId) as any });
   }
 
+  async deleteMemberEnrollmentsByClassroom(classroomId: string): Promise<void> {
+    await this.init();
+    const cObjId = toObjectId(classroomId);
+
+    // 1. Delete classroom_member_enrollments
+    try {
+      const memberEnrollCol = await this.db.getCollection<any>('classroom_member_enrollments');
+      await memberEnrollCol.deleteMany({
+        $or: [
+          { classroom_id: classroomId },
+          { classroom_id: cObjId },
+          { source_classroom_id: classroomId },
+          { source_classroom_id: cObjId },
+        ],
+      });
+    } catch (e) {
+      console.error('Failed to cascade delete classroom_member_enrollments:', e);
+    }
+
+    // 2. Delete main enrollments specifically granted by this classroom (leaving self-enrolled untouched)
+    try {
+      const mainEnrollCol = await this.db.getCollection<any>('enrollments');
+      await mainEnrollCol.deleteMany({
+        $or: [
+          { classroomId: classroomId },
+          { classroomId: cObjId },
+          { sourceClassroomId: classroomId },
+          { sourceClassroomId: cObjId },
+          { source_classroom_id: classroomId },
+          { source_classroom_id: cObjId },
+        ],
+      });
+    } catch (e) {
+      console.error('Failed to cascade delete classroom main enrollments:', e);
+    }
+
+    // 3. Delete classroom announcements, assignments, and submissions
+    try {
+      const annCol = await this.db.getCollection<any>('classroom_announcements');
+      await annCol.deleteMany({
+        $or: [{ classroom_id: classroomId }, { classroom_id: cObjId }],
+      });
+      const assignCol = await this.db.getCollection<any>('classroom_assignments');
+      await assignCol.deleteMany({
+        $or: [{ classroom_id: classroomId }, { classroom_id: cObjId }],
+      });
+      const subCol = await this.db.getCollection<any>('classroom_submissions');
+      await subCol.deleteMany({
+        $or: [{ classroom_id: classroomId }, { classroom_id: cObjId }],
+      });
+    } catch (e) {
+      console.error('Failed to cascade delete classroom LMS artifacts:', e);
+    }
+  }
+
   // ── Utility ─────────────────────────────────────────────────────────────────
 
   async codeExists(code: string): Promise<boolean> {

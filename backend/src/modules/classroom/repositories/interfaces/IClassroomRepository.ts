@@ -24,6 +24,7 @@ export interface IClassroomRepository {
   // ── Cleanup ─────────────────────────────────────────────────────────────────
   deleteMembersByClassroom(classroomId: string): Promise<void>;
   deleteCoursesByClassroom(classroomId: string): Promise<void>;
+  deleteMemberEnrollmentsByClassroom(classroomId: string): Promise<void>;
 
   // ── Utility ─────────────────────────────────────────────────────────────────
   codeExists(code: string): Promise<boolean>;

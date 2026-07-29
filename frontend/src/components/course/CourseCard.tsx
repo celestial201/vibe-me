@@ -283,9 +283,9 @@ export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard'
               <CardContent className="flex flex-col p-4">
                 <h3
                   className="mb-1 min-h-[2.75rem] font-bold text-foreground text-lg break-words line-clamp-2 leading-tight"
-                  title={enrollment?.course?.name || `Course ${index + 1}`}
+                  title={enrollment.course?.name || (enrollment.course as any)?.title || `Course ${index + 1}`}
                 >
-                  {enrollment?.course?.name || `Course ${index + 1}`}
+                  {enrollment.course?.name || (enrollment.course as any)?.title || `Course ${index + 1}`}
                 </h3>
                 <div className="mt-3 space-y-4">
                   {variant !== 'available' && (
