@@ -723,7 +723,21 @@ export class ClassroomLmsService {
 
       const enrollDoc = enrollmentMap.get(studentId);
       const courseAccepted: 'accepted' | 'pending' = enrollDoc?.accepted ? 'accepted' : 'pending';
-      const courseProgress: number = enrollDoc?.progress || 0;
+      let courseProgress: number = enrollDoc?.progress || enrollDoc?.progress_percentage || 0;
+
+      if (courseAccepted === 'accepted' && (!courseProgress || courseProgress === 0)) {
+        try {
+          const mainEnrollCol = await this.db.getCollection<any>('enrollments');
+          const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+          const activeEnr = await mainEnrollCol.findOne({
+            userId: { $in: [userObjId, studentId] },
+            status: 'active'
+          });
+          if (activeEnr && typeof activeEnr.percentCompleted === 'number') {
+            courseProgress = Number(activeEnr.percentCompleted.toFixed(2));
+          }
+        } catch (_) {}
+      }
 
       roster.push({
         studentId,

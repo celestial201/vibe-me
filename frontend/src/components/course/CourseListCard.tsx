@@ -28,7 +28,7 @@ const StudentTimeslotModal = lazy(() =>
 );
 
 export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, variant = 'dashboard', className }: CourseCardProps) => {
-  if (!enrollment || !enrollment.courseId || !enrollment.courseVersionId) return null;
+  if (!enrollment || !enrollment.courseId) return null;
 
   const courseId = bufferToHex(enrollment.courseId as string);
   const versionId = bufferToHex(enrollment.courseVersionId as string) || "";
