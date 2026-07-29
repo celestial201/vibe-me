@@ -685,13 +685,18 @@ export class SettingRepository implements ISettingRepository {
     ];
 
     if (enrolledCourseVersionIds.length > 0) {
-      pipeline.push({
-        $match: {
-          courseVersionId: {
-            $nin: enrolledCourseVersionIds.map(id => new ObjectId(id)),
+      const validOids = enrolledCourseVersionIds
+        .filter(id => id && ObjectId.isValid(String(id)))
+        .map(id => new ObjectId(String(id)));
+      if (validOids.length > 0) {
+        pipeline.push({
+          $match: {
+            courseVersionId: {
+              $nin: validOids,
+            },
           },
-        },
-      });
+        });
+      }
     }
 
     if (search) {

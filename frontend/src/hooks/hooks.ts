@@ -6371,12 +6371,13 @@ export function useCheckTimeSlotAccess(
 }
 
 // GET /users/enrollments
-export function useUserEnrollmentsDetails(enabled: boolean = true, search?: string, role = "STUDENT", courseVersionId?: string, cohortId?: string): {
+export function useUserEnrollmentsDetails(enabled: boolean = true, search?: string, role = "STUDENT", courseVersionIdInput?: any, cohortId?: string): {
   data: components['schemas']['EnrollmentResponse'] | undefined,
   isLoading: boolean,
   error: string | null,
   refetch: () => void
 } {
+  const courseVersionId = courseVersionIdInput ? extractIdString(courseVersionIdInput) : undefined;
   const result = api.useQuery("get", "/users/enrollments/details", {
     params: {
       query: { search, role, courseVersionId, cohortId }
