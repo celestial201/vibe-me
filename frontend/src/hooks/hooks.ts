@@ -860,9 +860,18 @@ export function useCreateCourseVersion(): {
 
 
 
+function extractIdString(val: any): string {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object') {
+    return (val._id || val.id || val.versionId || val.courseId || '').toString();
+  }
+  return String(val);
+}
+
 // GET /courses/versions/{id}
 export function useCourseVersionById(
-  id: string,
+  idInput: string | any,
   enabled?: boolean,
   cohortId?: string,
 ): {
@@ -871,7 +880,7 @@ export function useCourseVersionById(
   error: string | null,
   refetch: () => void
 } {
-
+  const id = extractIdString(idInput);
   const enabledOptions = enabled !== undefined
     ? { enabled: !!id && enabled }
     : undefined;
@@ -1818,12 +1827,14 @@ export function useCourseVersionEnrollments(
 // Progress hooks
 
 // GET /users/progress/courses/{courseId}/versions/{courseVersionId}/
-export function useUserProgress(courseId: string, courseVersionId: string, cohortId?: string): {
+export function useUserProgress(courseIdInput: any, courseVersionIdInput: any, cohortId?: string): {
   data: components['schemas']['ProgressDataResponse'] | undefined,
   isLoading: boolean,
   error: string | null,
   refetch: () => void
 } {
+  const courseId = extractIdString(courseIdInput);
+  const courseVersionId = extractIdString(courseVersionIdInput);
   const result = api.useQuery("get", "/users/progress/courses/{courseId}/versions/{courseVersionId}", {
     params: { path: { courseId, courseVersionId }, query: { cohortId } }
   }, { enabled: !!courseId && !!courseVersionId }
