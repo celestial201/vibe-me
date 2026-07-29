@@ -11,6 +11,7 @@ import {
   Map,
   Megaphone,
   PieChart,
+  School,
   Settings2,
   Shield,
   SquareTerminal,
@@ -66,6 +67,11 @@ export function AppSidebar() {
         title: "HP System",
         url: "/teacher/hp-system",
         icon: SquareTerminal,
+      },
+      {
+        title: "Classrooms",
+        url: "/teacher/classrooms",
+        icon: School,
       },
       // {
       //   title: "Notifications",

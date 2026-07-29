@@ -408,6 +408,11 @@ export interface IEnrollment {
   enrollmentDate: Date;
   percentCompleted: number;
   completedItemsCount?: number;
+  source_classroom_id?: string | ObjectId;
+  push_status?: 'pending_acceptance' | 'accepted' | 'completed';
+  student_id?: string | ObjectId;
+  course_id?: string | ObjectId;
+  progress_percentage?: number;
   assignedTimeSlots?: Array<{
     from: string; // HH:MM format in IST
     to: string; // HH:MM format in IST
@@ -1126,3 +1131,116 @@ export interface IAnnouncement {
 //  itemId: string | ObjectId | null;
 //  action: string;
 // }
+
+// ─── Onboarding Classroom ────────────────────────────────────────────────────
+
+export interface IClassroom {
+  _id?: ID;
+  title: string;
+  description?: string;
+  code: string;           // unique 6-char alphanumeric join code
+  instructorId: ID;
+  status: 'active' | 'archived';
+  start_date?: Date;
+  end_date?: Date;
+  internship_start_date?: Date;
+  internship_end_date?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IJournalSubmission {
+  _id?: ID;
+  student_id: ID;
+  classroom_id: ID;
+  day_number: number;
+  is_completed: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface IDailyJournal {
+  _id?: ID;
+  classroom_id: ID;
+  day_number: number;
+  date: Date;
+  title?: string;
+  content_link?: string;
+  journal_entry?: string;
+  updatedAt?: Date;
+}
+
+export interface IClassroomMember {
+  _id?: ID;
+  classroomId: ID;
+  studentId: ID;
+  joinedAt: Date;
+}
+
+export interface IClassroomCourse {
+  _id?: ID;
+  classroomId: ID;
+  courseId: ID;     // reference only — no course data duplicated
+  versionId: ID;    // active version at time of assignment
+  assignedAt: Date;
+}
+
+export interface IClassroomAnnouncement {
+  _id?: ID;
+  classroom_id: ID;
+  author_id: ID;
+  content: string;
+  type?: 'text' | 'assignment' | 'course_invitation';
+  metadata?: {
+    course_id?: ID;
+    course_title?: string;
+    course_thumbnail?: string;
+  };
+  attachments?: string[];
+  status?: 'pending' | 'approved' | 'rejected';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type NotificationType = 'new_assignment' | 'new_announcement' | 'approval_request' | 'due_soon';
+
+export interface INotification {
+  _id?: ID;
+  user_id: ID;
+  classroom_id?: ID;
+  type: NotificationType;
+  message: string;
+  link: string;
+  is_read: boolean;
+  createdAt: Date;
+}
+
+export interface IClassroomAssignment {
+  _id?: ID;
+  classroom_id: ID;
+  instructor_id: ID;
+  title: string;
+  description?: string;
+  points: number;
+  due_date: Date;
+  attachments?: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type SubmissionStatus = 'pending' | 'submitted' | 'graded' | 'returned';
+
+export interface IClassroomSubmission {
+  _id?: ID;
+  assignment_id: ID;
+  classroom_id: ID;
+  student_id: ID;
+  status: SubmissionStatus;
+  submitted_files?: string[];
+  grade?: number;
+  teacher_feedback?: string;
+  submitted_at?: Date;
+  graded_at?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}

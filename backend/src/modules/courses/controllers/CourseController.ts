@@ -65,7 +65,22 @@ export class CourseController {
     @inject(USERS_TYPES.EnrollmentService)
     private readonly enrollmentService: EnrollmentService,
   ) {}
-
+  @OpenAPI({
+    summary: "Get instructor's created courses",
+    description: "Fetches all courses created or available for assignment by the teacher",
+  })
+  @Authorized()
+  @Get('/my-courses', { transformResponse: true })
+  async getMyCourses(@CurrentUser() user: IUser) {
+    const courses = await this.courseService.getAllCourses();
+    const userId = user._id?.toString() ?? '';
+    return courses.filter((c: any) => {
+      if (!c) return false;
+      const instructors = c.instructors || [];
+      const instStrings = instructors.map((i: any) => (i?.toString ? i.toString() : String(i)));
+      return instStrings.includes(userId) || c.creatorId?.toString() === userId || true;
+    });
+  }
   @OpenAPI({
     summary: 'Get Active Users by Course',
     description:

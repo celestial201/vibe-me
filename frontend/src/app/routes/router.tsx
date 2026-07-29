@@ -57,6 +57,21 @@ import SelectRolePage from '../pages/SelectRolePage'
 import AuditPage from '../pages/teacher/AuditPage'
 import ConfigureCohorts from '../pages/teacher/configure-cohorts'
 
+// ── Classroom pages ────────────────────────────────────────────────────────────
+import ClassroomsListPage from '../pages/teacher/classrooms/ClassroomsListPage'
+import CreateClassroomPage from '../pages/teacher/classrooms/CreateClassroomPage'
+import ClassroomDetailPage from '../pages/teacher/classrooms/ClassroomDetailPage'
+import JoinClassroomPage from '../pages/student/classrooms/JoinClassroomPage'
+import MyClassroomsPage from '../pages/student/classrooms/MyClassroomsPage'
+import ClassroomCoursesPage from '../pages/student/classrooms/ClassroomCoursesPage'
+import { ClassroomLayout } from '../pages/classroom/ClassroomLayout'
+
+const classroomLmsWorkspaceRoute = new Route({
+  getParentRoute: () => rootRoute,
+  path: '/classroom/$classroomId',
+  component: ClassroomLayout,
+});
+
 import HpSystemVersions from '../pages/teacher/hp-system/HpSystemPage'
 import HpSystemCohorts from '../pages/teacher/hp-system/CohortsList'
 import HpSystemDashboard from '../pages/teacher/hp-system/CohortDetails'
@@ -121,6 +136,43 @@ const teacherEjectionPoliciesRoute = new Route({
   getParentRoute: () => teacherLayoutRoute,
   path: '/ejection-policies',
   component: EjectionPoliciesPage,
+});
+
+// ── Classroom routes ──────────────────────────────────────────────────────────
+const teacherClassroomsListRoute = new Route({
+  getParentRoute: () => teacherLayoutRoute,
+  path: '/classrooms',
+  component: ClassroomsListPage,
+});
+
+const teacherClassroomCreateRoute = new Route({
+  getParentRoute: () => teacherLayoutRoute,
+  path: '/classrooms/create',
+  component: CreateClassroomPage,
+});
+
+const teacherClassroomDetailRoute = new Route({
+  getParentRoute: () => teacherLayoutRoute,
+  path: '/classrooms/$id',
+  component: ClassroomDetailPage,
+});
+
+const studentMyClassroomsRoute = new Route({
+  getParentRoute: () => studentLayoutRoute,
+  path: '/classrooms',
+  component: MyClassroomsPage,
+});
+
+const studentJoinClassroomRoute = new Route({
+  getParentRoute: () => studentLayoutRoute,
+  path: '/classrooms/join',
+  component: JoinClassroomPage,
+});
+
+const studentClassroomCoursesRoute = new Route({
+  getParentRoute: () => studentLayoutRoute,
+  path: '/classrooms/$id',
+  component: ClassroomCoursesPage,
 });
 
 // Forgot Password route - accessible only when NOT authenticated
@@ -707,7 +759,7 @@ const routeTree = rootRoute.addChildren([
     teacherAnnouncementsRoute,
     teacherAuditRoute,
     teacherConfigureCohortsRoute,
-      teacherEjectionPoliciesRoute, 
+      teacherEjectionPoliciesRoute,
     teacherHpSystemVersionsRoute,
     teacherHpSystemCohortsRoute,
     teacherHpSystemDashboardRoute,
@@ -716,6 +768,9 @@ const routeTree = rootRoute.addChildren([
     teacherStudentSubmissionsRoute,
     teacherSubmissionDetailsRoute,
     teacherNotificationsRoute,
+    teacherClassroomsListRoute,
+    teacherClassroomCreateRoute,
+    teacherClassroomDetailRoute,
   ]),
   studentLayoutRoute.addChildren([
     studentDashboardRoute,
@@ -733,8 +788,12 @@ const routeTree = rootRoute.addChildren([
     studentHpSystemSubmissionsRoute,
     studentHpSystemLedgerRoute,
     studentNotificationsRoute,
+    studentMyClassroomsRoute,
+    studentJoinClassroomRoute,
+    studentClassroomCoursesRoute,
   ]),
   coursePageRoute,
+  classroomLmsWorkspaceRoute,
 ]);
 
 // For server-side rendering compatibility

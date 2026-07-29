@@ -98,7 +98,7 @@ describe('Auth Controller Integration Tests', () => {
       expect(response.body).toHaveProperty('errors');
       expect(response.body.errors[0].constraints.isEmail).toBeDefined();
       expect(response.body.errors[0].constraints.isEmail).toBe(
-        'email must be an email',
+        'Invalid email address',
       );
     }, 30000);
 

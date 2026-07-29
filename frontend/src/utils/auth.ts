@@ -1,91 +1,13 @@
-import { auth, provider } from '../lib/firebase';
-import { 
-  signInWithPopup, 
-  signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  User as FirebaseUser // Import Firebase User type
-} from 'firebase/auth';
-import { useAuthStore } from '../store/auth-store'; // Removed unused User import
+import { useAuthStore } from '../store/auth-store';
 import { queryClient } from '../lib/client';
 
-
-
-// Enhance mapFirebaseUserToAppUser to fetch backend user info directly
-const mapFirebaseUserToAppUser = async (firebaseUser: FirebaseUser | null) => {
-  if (!firebaseUser) return null;
-  try {
-    // Get token for backend API calls
-    const token = await firebaseUser.getIdToken(true);
-    useAuthStore.getState().setToken(token);
-
-    let backendUser: any = null;
-    try {
-      const baseUrl = import.meta.env.VITE_BASE_URL;
-      const response = await fetch(`${baseUrl}/users/me`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (response.ok) {
-        backendUser = await response.json();
-      }
-    } catch (profileError) {
-      console.error('Failed to fetch backend profile:', profileError);
-    }
-
-    const resolvedFirstName = backendUser?.firstName || '';
-    const resolvedLastName = backendUser?.lastName || '';
-    const resolvedName = `${resolvedFirstName} ${resolvedLastName}`.trim();
-
-    return {
-      uid: firebaseUser.uid,
-      email: firebaseUser.email || '',
-      name: resolvedName || firebaseUser.displayName || '',
-      firstName: resolvedFirstName,
-      lastName: resolvedLastName,
-      role: useAuthStore.getState().user?.role || null,
-      avatar: backendUser?.avatar || firebaseUser.photoURL || '',
-      gender: backendUser?.gender || '',
-      country: backendUser?.country || '',
-      state: backendUser?.state || '',
-      city: backendUser?.city || '',
-    };
-  } catch (error) {
-    console.error('Error mapping Firebase user:', error);
-    return null;
-  }
-};
-
 export const refreshFirebaseToken = async (): Promise<void> => {
-  if (!auth || !auth.app || localStorage.getItem('auth-provider') === 'local') {
-    return;
-  }
-  const firebaseUser = auth?.currentUser;
-  if (!firebaseUser) {
-    return;
-  }
-  try {
-    const token = await firebaseUser.getIdToken(true);
-    useAuthStore.getState().setToken(token);
-  } catch (error) {
-    console.warn('Error refreshing Firebase token (bypassed in local mode):', error);
-  }
+  return;
 };
 
 // Login with Google in a popup
 export const loginWithGoogle = async () => {
-  try {
-    const result = await signInWithPopup(auth, provider);
-    localStorage.setItem('auth-provider', 'google');
-    const user = await mapFirebaseUserToAppUser(result.user);
-    if (user) {
-      useAuthStore.getState().setUser(user);
-    }
-    return result;
-  } catch (error) {
-    console.error('Google login error:', error);
-    throw error;
-  }
+  throw new Error("Google Sign-In is not supported in local JWT mode.");
 };
 
 // Login with email/password
@@ -137,15 +59,11 @@ export const loginWithEmail = async (email: string, password: string) => {
   };
 };
 
-// Use a single implementation of logout and checkAuth
 // Logout
 export function logout() {
   localStorage.removeItem('isAuth');
   localStorage.removeItem('firebase-auth-token');
   localStorage.removeItem('auth-provider');
-  if (auth && auth.app) {
-    firebaseSignOut(auth).catch(err => console.error('Firebase logout error:', err));
-  }
   useAuthStore.getState().clearUser();
   queryClient.clear();
 }
@@ -153,13 +71,9 @@ export function logout() {
 // Check if user is authenticated
 export function checkAuth() {
   const token = localStorage.getItem('firebase-auth-token') || useAuthStore.getState().token;
-  if (!auth || localStorage.getItem('auth-provider') === 'local') {
-    return true;
-  }
-  const firebaseUser = auth?.currentUser;
-  return !!token || !!firebaseUser;
+  return !!token;
 }
 
 // API-specific functions
-// Use openapi-react-query hooks from hooks.ts
 export { useLogin } from '../hooks/hooks';
+
