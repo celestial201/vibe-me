@@ -1,4 +1,4 @@
-import { LayoutDashboard, Flag, BookOpen, Megaphone, FileText, SquareTerminal, Gamepad2, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Flag, BookOpen, Megaphone, FileText, SquareTerminal, Gamepad2, LogIn, School, type LucideIcon } from "lucide-react";
 
 export type StudentNavItem = {
   /** Stable identifier — used for keys and conditional logic. */
@@ -24,4 +24,6 @@ export const STUDENT_NAV_ITEMS: StudentNavItem[] = [
   { key: "announcements", title: "Announcements", to: "/student/announcements", icon: Megaphone, indicator: "announcements" },
   { key: "arena", title: "Arena", to: "/student/arena", icon: Gamepad2 },
   { key: "submissions", title: "My Submissions", to: "/student/submissions", icon: FileText },
+  { key: "join-classroom", title: "Join Classroom", to: "/student/classrooms/join", icon: LogIn },
+  { key: "my-classrooms", title: "My Classrooms", to: "/student/classrooms", icon: School },
 ];

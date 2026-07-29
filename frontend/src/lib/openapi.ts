@@ -58,17 +58,8 @@ fetchClient.use({
       } catch (error) {
         console.error('Token refresh failed during API call:', error);
       }
-      try {
-        const { auth: firebaseAuth } = await import('@/lib/firebase');
-        if (firebaseAuth && firebaseAuth.currentUser) {
-          const freshToken = await firebaseAuth.currentUser.getIdToken(true);
-          localStorage.setItem('firebase-auth-token', freshToken);
-          const retryRequest = request.clone();
-          retryRequest.headers.set('Authorization', `Bearer ${freshToken}`);
-          return fetch(retryRequest);
-        }
-      } catch (retryError) {
-        console.error('API interceptor: Final token refresh attempt failed:', retryError);
+      if (localStorage.getItem('auth-provider') === 'local') {
+        return response;
       }
     }
     return response;

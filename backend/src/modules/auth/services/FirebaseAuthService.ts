@@ -487,24 +487,23 @@ export class FirebaseAuthService extends BaseService implements IAuthService {
       throw new ChangePasswordError('New passwords do not match');
     }
 
-    if (requestUser.authProvider === 'local' || !requestUser.firebaseUID) {
-      const hashedPassword = await bcrypt.hash(body.newPassword, 10);
-      await this.userRepository.edit(requestUser._id.toString(), {
-        password: hashedPassword,
-      });
-      return {success: true, message: 'Password updated successfully'};
-    }
-
-    // Verify user exists in Firebase
-    const firebaseUser = await this.auth.getUser(requestUser.firebaseUID);
-    if (!firebaseUser) {
-      throw new ChangePasswordError('User not found');
-    }
-
-    // Update password in Firebase Auth
-    await this.auth.updateUser(firebaseUser.uid, {
-      password: body.newPassword,
+    const hashedPassword = await bcrypt.hash(body.newPassword, 10);
+    await this.userRepository.edit(requestUser._id.toString(), {
+      password: hashedPassword,
     });
+
+    if (requestUser.firebaseUID && !requestUser.firebaseUID.startsWith('local_') && this.auth) {
+      try {
+        const firebaseUser = await this.auth.getUser(requestUser.firebaseUID);
+        if (firebaseUser) {
+          await this.auth.updateUser(firebaseUser.uid, {
+            password: body.newPassword,
+          });
+        }
+      } catch {
+        // Ignore Firebase Auth sync failure when bypassed or running locally
+      }
+    }
 
     return {success: true, message: 'Password updated successfully'};
   }

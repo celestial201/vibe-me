@@ -78,15 +78,24 @@ if (NODE_ENV === 'production' || NODE_ENV === 'staging') {
   Sentry.setupExpressErrorHandler(app);
 }
 
+import http from 'http';
+import path from 'path';
+import { initSocketServer } from './shared/socket/socket.js';
+
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
 const database = getContainer().get<MongoDatabase>(GLOBAL_TYPES.Database);
 await database.connect();
 
 // Start server
 useExpressServer(app, moduleOptions);
 
-app.listen(appConfig.port, () => {
+const server = http.createServer(app);
+initSocketServer(server);
+
+server.listen(appConfig.port, () => {
   printStartupSummary();
   startCron();
 });
 
-console.log("Backend restarted to load new Arena modules.");
+console.log("Backend restarted with Socket.io and Static Uploads enabled.");

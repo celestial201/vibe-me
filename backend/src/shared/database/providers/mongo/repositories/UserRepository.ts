@@ -127,27 +127,26 @@ export class UserRepository implements IUserRepository {
     const users = await this.usersCollection
       .find(
         {_id: {$in: userIds.map(id => new ObjectId(id))}},
-        {projection: {firstName: 1, firebaseUID: 1, _id: 0}, session}, // <-- projection instead of select
+        {projection: {firstName: 1, profileImage: 1, firebaseUID: 1}, session},
       )
       .toArray();
     const results = await Promise.all(
       users.map(async user => {
         try {
-          const userRecord = await admin.auth().getUser(user.firebaseUID);
-          return {
-            name: user.firstName,
-            profileImage: userRecord.photoURL || null,
-          };
-        } catch (error) {
-          console.error(
-            `Failed to fetch Firebase user for UID: ${user.firebaseUID}`,
-            error,
-          );
-          return {
-            name: user.firstName,
-            profileImage: null,
-          };
+          if (admin.apps.length > 0 && user.firebaseUID && !user.firebaseUID.startsWith('local_')) {
+            const userRecord = await admin.auth().getUser(user.firebaseUID);
+            return {
+              name: user.firstName,
+              profileImage: userRecord.photoURL || user.profileImage || null,
+            };
+          }
+        } catch {
+          // Firebase auth bypassed or unavailable in local mode
         }
+        return {
+          name: user.firstName,
+          profileImage: user.profileImage || null,
+        };
       }),
     );
     return results;

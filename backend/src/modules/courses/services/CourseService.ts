@@ -53,6 +53,10 @@ class CourseService extends BaseService {
     super(mongoDatabase);
   }
 
+  async getAllCourses() {
+    return this.courseRepo.getAllCourses();
+  }
+
   async createCourse(
     course: Course,
     versionName: string,
