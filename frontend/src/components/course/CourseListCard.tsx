@@ -45,6 +45,46 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const isPending = enrollment?.accepted === false ||
+                    (enrollment as any)?.enrollmentStatus === 'PENDING_INVITATION' ||
+                    (enrollment as any)?.status === 'PENDING_INVITATION';
+
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [acceptedLocal, setAcceptedLocal] = useState(!isPending);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setAcceptedLocal(!isPending);
+  }, [isPending]);
+
+  const handleAccept = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsAccepting(true);
+    try {
+      const classroomId = (enrollment as any).classroomId || (enrollment as any).sourceClassroomId;
+      if (classroomId && courseId) {
+        await classroomLmsApi.acceptCourseEnrollment(classroomId, courseId);
+      } else {
+        await fetch(`${BASE_URL}/classroom/courses/${courseId}/accept`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+      }
+      setAcceptedLocal(true);
+      toast.success("Invitation accepted! You are now enrolled.");
+      queryClient.invalidateQueries({ queryKey: ["get", "/users/enrollments"] });
+      queryClient.invalidateQueries({ queryKey: ["user-enrollments"] });
+    } catch (err) {
+      console.error("Failed to accept enrollment:", err);
+      toast.error("Failed to accept invitation. Please try again.");
+    } finally {
+      setIsAccepting(false);
+    }
+  };
+
   const progress = Number(Math.min(enrollment.percentCompleted ?? 0, 100).toFixed(2));
   const hasAssignedTimeslot = Array.isArray(enrollment.assignedTimeSlot)
     ? enrollment.assignedTimeSlot.length > 0
@@ -84,7 +124,7 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
   ];
   const iconTheme = iconThemes[index % iconThemes.length];
 
-  const hasMenu = variant !== 'available' && isNotGuruSetu;
+  const hasMenu = variant !== 'available' && isNotGuruSetu && acceptedLocal;
 
   const handleContinue = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
