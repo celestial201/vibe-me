@@ -42,10 +42,10 @@ export function setupCourseVersionAbilities(
                 can(CourseVersionActions.View, 'CourseVersion', versionBounded);
                 break;
             case 'INSTRUCTOR':
-                can(CourseVersionActions.View, 'CourseVersion', versionBounded);
-                can(CourseVersionActions.Modify, 'CourseVersion', versionBounded);
+                // Same as an admin within their own versions, minus the
+                // destructive lifecycle actions, which stay admin-only.
+                can('manage', 'CourseVersion', versionBounded);
                 can(CourseVersionActions.Create, 'CourseVersion', { courseId: enrollment.courseId });
-                can(CourseVersionActions.Create, 'CourseVersion', versionBounded);
                 cannot(CourseVersionActions.Delete, 'CourseVersion', versionBounded);
                 cannot(CourseVersionActions.Archive, 'CourseVersion', versionBounded);
                 break;
@@ -53,12 +53,20 @@ export function setupCourseVersionAbilities(
                 can('manage', 'CourseVersion', versionBounded);
                 can('manage', 'CourseVersion', { courseId: enrollment.courseId });
                 cannot(CourseVersionActions.Delete, 'CourseVersion', versionBounded);
+                cannot(CourseVersionActions.Archive, 'CourseVersion', versionBounded);
                 break;
             case 'TA':
                 can(CourseVersionActions.View, 'CourseVersion', versionBounded);
                 break;
         }
     });
+
+    // Admin-only, unconditionally. Cloning a version (`POST .../copy`) checks
+    // this action against the bare subject type and actually creates a whole
+    // new Course, so without this deny any course manager could create
+    // courses through the clone route. Declared after the loop because the
+    // last matching rule wins.
+    cannot(CourseVersionActions.Create, 'CourseVersion');
 }
 
 /**
