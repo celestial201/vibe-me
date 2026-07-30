@@ -3,7 +3,7 @@ import { ArrowLeft, BookOpen, ExternalLink, Loader2, School, CheckCircle2 } from
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { useGetStudentClassroomCourses, useGetClassroom } from '@/hooks/classroom-hooks'
+import { useGetStudentClassroomCourses, useGetClassroom, useStartClassroomCourse } from '@/hooks/classroom-hooks'
 import { useGetStudentEnrollmentStatus, useAcceptCourseEnrollment } from '@/hooks/classroom-lms-hooks'
 import { useCourseStore } from '@/store/course-store'
 
@@ -15,8 +15,8 @@ export default function ClassroomCoursesPage() {
 
   const { data: classroom, isLoading: loadingClassroom } = useGetClassroom(id, !!id)
   const { data: courses = [], isLoading: loadingCourses } = useGetStudentClassroomCourses(id, !!id)
-  const { data: statusList = [] } = useGetStudentEnrollmentStatus(id)
-  const acceptMutation = useAcceptCourseEnrollment(id)
+  const startCourseMutation = useStartClassroomCourse(id)
+
 
   const handleOpenCourse = (courseId: string, versionId: string) => {
     setCurrentCourse({
@@ -81,8 +81,8 @@ export default function ClassroomCoursesPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {courses.map((c) => {
-              const statusDoc = statusList.find((s) => s.courseId === c.courseId)
-              const isAccepted = statusDoc?.accepted ?? false
+              const isEnrolled = c.isEnrolled ?? false
+              const progressPercentage = c.progressPercentage ?? 0
 
               return (
                 <Card key={c._id ?? c.courseId} className="group hover:shadow-md transition-all border hover:border-primary/40">
@@ -95,60 +95,72 @@ export default function ClassroomCoursesPage() {
                         <p className="font-semibold text-sm leading-tight truncate">
                           {c.courseName ?? `Course ${c.courseId.slice(-6)}`}
                         </p>
-                        {c.versionName && (
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{c.versionName}</p>
+                        {c.courseDescription && (
+                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{c.courseDescription}</p>
                         )}
-                        <div className="flex items-center gap-2 mt-1">
-                          <p className="text-xs text-muted-foreground">
-                            Assigned {c.assignedAt ? new Date(c.assignedAt).toLocaleDateString() : ''}
-                          </p>
+                        <div className="flex items-center gap-2 mt-2">
                           <Badge
-                            variant={isAccepted ? 'default' : 'secondary'}
+                            variant={isEnrolled ? 'default' : 'secondary'}
                             className={
-                              isAccepted
-                                ? 'bg-emerald-600 text-white text-[9px] px-1.5 py-0'
-                                : 'bg-amber-500/20 text-amber-600 border-amber-500/30 text-[9px] px-1.5 py-0'
+                              isEnrolled
+                                ? 'bg-emerald-600 text-white text-[10px] px-2 py-0.5'
+                                : 'bg-amber-500/20 text-amber-600 border-amber-500/30 text-[10px] px-2 py-0.5'
                             }
                           >
-                            {isAccepted ? 'Accepted' : 'Pending Acceptance'}
+                            {isEnrolled ? 'Enrolled' : 'Not Enrolled'}
                           </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            Assigned {c.assignedAt ? new Date(c.assignedAt).toLocaleDateString() : ''}
+                          </span>
                         </div>
                       </div>
                     </div>
 
-                    {!isAccepted ? (
-                      <div className="flex flex-col gap-2">
-                        <div className="bg-amber-500/10 border border-amber-500/30 p-2 rounded-lg flex items-center justify-between text-xs text-amber-600 dark:text-amber-400">
-                          <span>New course enrollment pending</span>
-                          <Button
-                            size="xs"
-                            className="bg-amber-600 hover:bg-amber-700 text-white"
-                            onClick={() => acceptMutation.mutate(c.courseId)}
-                            disabled={acceptMutation.isPending}
-                          >
-                            Accept Enrollment
-                          </Button>
+                    {isEnrolled && (
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-xs font-medium">
+                          <span className="text-muted-foreground">Global Progress</span>
+                          <span className="text-primary font-bold">{progressPercentage}%</span>
                         </div>
-                        <Button
-                          size="sm"
-                          className="w-full gap-2"
-                          onClick={() => {
-                            if (!isAccepted) acceptMutation.mutate(c.courseId)
-                            handleOpenCourse(c.courseId, c.versionId)
-                          }}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          Open Course
-                        </Button>
+                        <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary transition-all duration-300 rounded-full"
+                            style={{ width: `${Math.min(100, Math.max(0, progressPercentage))}%` }}
+                          />
+                        </div>
                       </div>
+                    )}
+
+                    {!isEnrolled ? (
+                      <Button
+                        size="sm"
+                        className="w-full gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+                        disabled={startCourseMutation.isPending}
+                        onClick={async () => {
+                          try {
+                            await startCourseMutation.mutateAsync(c.courseId)
+                            handleOpenCourse(c.courseId, c.versionId)
+                          } catch {
+                            // error handled by hook toast
+                          }
+                        }}
+                      >
+                        {startCourseMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ExternalLink className="h-4 w-4" />
+                        )}
+                        Start Course
+                      </Button>
                     ) : (
                       <Button
                         size="sm"
-                        className="w-full gap-2"
+                        variant="secondary"
+                        className="w-full gap-2 border hover:border-primary/50"
                         onClick={() => handleOpenCourse(c.courseId, c.versionId)}
                       >
                         <ExternalLink className="h-4 w-4" />
-                        Open Course
+                        Continue Course
                       </Button>
                     )}
                   </CardContent>
@@ -158,6 +170,7 @@ export default function ClassroomCoursesPage() {
           </div>
         )}
       </div>
+
     </div>
   )
 }
