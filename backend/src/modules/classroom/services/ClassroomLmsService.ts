@@ -700,15 +700,30 @@ export class ClassroomLmsService {
     return { success: true, enrolledCount: members.length };
   }
 
-  async getStudentAnalyticsRoster(classroomId: string, instructorId: string): Promise<StudentAnalyticsRosterDTO[]> {
+  async getStudentAnalyticsRoster(classroomId: string, requesterId: string): Promise<any[]> {
     const classroom = await this.classroomRepo.findById(classroomId);
     if (!classroom) throw new NotFoundError('Classroom not found');
-    if (classroom.instructorId !== instructorId) {
-      throw new ForbiddenError('Only the classroom instructor can view analytics.');
-    }
 
     const members = await this.classroomRepo.findMembersByClassroom(classroomId);
     if (!members || members.length === 0) return [];
+
+    const isTeacher = classroom.instructorId?.toString() === requesterId;
+
+    if (!isTeacher) {
+      const studentRoster = [];
+      for (const m of members) {
+        const studentId = String(m.studentId);
+        const user = await this.userRepo.findById(studentId);
+        const classmateName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Classmate';
+        studentRoster.push({
+          studentId,
+          classmateName,
+          joiningDate: m.joinedAt || new Date(),
+        });
+      }
+      return studentRoster;
+    }
+
 
     const assignments = await this.assignmentRepo.findByClassroom(classroomId);
     const submissions = await this.submissionRepo.findByClassroom(classroomId);

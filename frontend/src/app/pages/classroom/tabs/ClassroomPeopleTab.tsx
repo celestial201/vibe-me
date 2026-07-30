@@ -150,12 +150,12 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
       <Card className="border border-border/60 bg-card shadow-xs">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold">
-            Enrolled Students ({isInstructor ? roster?.length || 0 : simpleStudents?.length || 0})
+            {isInstructor ? `Enrolled Students (${roster?.length || 0})` : `Classmates (${roster?.length || 0})`}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">
-          {isLoading ? (
-            <div className="text-center py-12 text-sm text-muted-foreground">Loading student roster and analytics...</div>
+          {isRosterLoading ? (
+            <div className="text-center py-12 text-sm text-muted-foreground">Loading roster...</div>
           ) : isInstructor ? (
             /* Teacher Detailed Student Analytics Roster Table */
             !roster || roster.length === 0 ? (
@@ -242,33 +242,42 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
               </div>
             )
           ) : (
-            /* Student View Roster List */
-            !simpleStudents || simpleStudents.length === 0 ? (
+            /* Student View Privacy-Safe Classmate Table (2 Columns Only: Classmate Name & Joining Date) */
+            !roster || roster.length === 0 ? (
               <div className="text-center py-12 border border-dashed rounded-lg text-sm text-muted-foreground m-4">
                 No classmates enrolled yet.
               </div>
             ) : (
-              <div className="divide-y divide-border/40 px-4">
-                {simpleStudents.map((m) => (
-                  <div key={m._id} className="py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium text-xs">
-                        <User className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{m.studentId || 'Student'}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Joined {format(new Date(m.joinedAt), 'MMM d, yyyy')}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Classmate Name</TableHead>
+                      <TableHead>Joining Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {roster.map((c) => (
+                      <TableRow key={c.studentId}>
+                        <TableCell className="font-medium flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                            {(c.classmateName || c.name || 'C')?.charAt(0)}
+                          </div>
+                          <span>{c.classmateName || c.name || 'Classmate'}</span>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {c.joiningDate ? format(new Date(c.joiningDate), 'MMM d, yyyy') : 'N/A'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )
           )}
         </CardContent>
       </Card>
+
 
       {/* Push Course Modal */}
       {isInstructor && (
