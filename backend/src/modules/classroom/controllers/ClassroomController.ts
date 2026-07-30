@@ -122,8 +122,10 @@ export class ClassroomController {
     @Body() body: JoinClassroomBody,
     @CurrentUser() user: IUser,
   ): Promise<ClassroomResponse> {
-    return this.classroomService.joinClassroom(body.code, user._id?.toString() ?? '');
+    const studentId = (user?._id || (user as any)?.id)?.toString() ?? '';
+    return this.classroomService.joinClassroom(body.code, studentId);
   }
+
 
   // ── Courses ───────────────────────────────────────────────────────────────
 

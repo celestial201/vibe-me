@@ -288,9 +288,12 @@ export class ClassroomLmsController {
     @Params() params: ClassroomIdParams,
     @CurrentUser() user: IUser,
   ): Promise<StudentAnalyticsRosterDTO[]> {
-    const instructorId = user._id?.toString() ?? '';
-    return this.lmsService.getStudentAnalyticsRoster(params.id, instructorId);
+    const instructorId = (user?._id || (user as any)?.id)?.toString() ?? '';
+    const roster = await this.lmsService.getStudentAnalyticsRoster(params.id, instructorId);
+    console.log('Roster Array Length:', roster.length);
+    return roster;
   }
+
 
   @OpenAPI({ summary: 'Student accepts course enrollment' })
   @Post('/:id/courses/:courseId/accept')

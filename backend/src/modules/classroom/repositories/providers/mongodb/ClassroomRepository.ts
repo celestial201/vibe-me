@@ -142,9 +142,19 @@ export class ClassroomRepository implements IClassroomRepository {
       classroomId: toObjectId(member.classroomId as string),
       studentId: toObjectId(member.studentId as string),
     };
-    const result = await this.members.insertOne(doc as any);
-    return { ...member, _id: result.insertedId.toString() };
+    try {
+      const result = await this.members.insertOne(doc as any);
+      return { ...member, _id: result.insertedId.toString() };
+    } catch (err: any) {
+      if (err?.code === 11000) {
+        const existing = await this.findMember(member.classroomId?.toString() ?? '', member.studentId?.toString() ?? '');
+        if (existing) return existing;
+      }
+
+      throw err;
+    }
   }
+
 
   async findMember(classroomId: string, studentId: string): Promise<IClassroomMember | null> {
     await this.init();

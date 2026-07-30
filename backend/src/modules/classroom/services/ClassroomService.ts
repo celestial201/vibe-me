@@ -135,16 +135,25 @@ export class ClassroomService {
     if (!classroom) throw new NotFoundError('Classroom not found. Check the code and try again.');
 
     const existing = await this.repo.findMember(classroom._id!.toString(), studentId);
-    if (existing) throw new BadRequestError('You have already joined this classroom.');
+    if (existing) {
+      return this._toClassroomResponse(classroom);
+    }
 
     const member: IClassroomMember = {
       classroomId: classroom._id!.toString(),
       studentId,
       joinedAt: new Date(),
     };
-    await this.repo.addMember(member);
+    try {
+      await this.repo.addMember(member);
+    } catch (err: any) {
+      if (err?.code !== 11000) {
+        throw err;
+      }
+    }
     return this._toClassroomResponse(classroom);
   }
+
 
   async getJoinedClassrooms(studentId: string): Promise<ClassroomResponse[]> {
     const entries = await this.repo.findClassroomsByStudent(studentId);
