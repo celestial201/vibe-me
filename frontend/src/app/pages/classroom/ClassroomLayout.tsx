@@ -9,9 +9,9 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 
 import { ClassroomStreamTab } from './tabs/ClassroomStreamTab';
-import { ClassroomClassworkTab } from './tabs/ClassroomClassworkTab';
 import { ClassroomPeopleTab } from './tabs/ClassroomPeopleTab';
 import { ClassroomCalendarTab } from './tabs/ClassroomCalendarTab';
+
 
 export function ClassroomLayout() {
   const params = useParams({ strict: false }) as { classroomId?: string; id?: string };
@@ -88,10 +88,6 @@ export function ClassroomLayout() {
                 <MessageSquare className="w-4 h-4" />
                 Stream
               </TabsTrigger>
-              <TabsTrigger value="classwork" className="flex items-center gap-2 text-xs md:text-sm px-4">
-                <BookOpen className="w-4 h-4" />
-                Classwork
-              </TabsTrigger>
               <TabsTrigger value="people" className="flex items-center gap-2 text-xs md:text-sm px-4">
                 <Users className="w-4 h-4" />
                 People
@@ -107,13 +103,10 @@ export function ClassroomLayout() {
             <ClassroomStreamTab classroomId={classroomId} isInstructor={isInstructor} />
           </TabsContent>
 
-          <TabsContent value="classwork" className="focus-visible:outline-none">
-            <ClassroomClassworkTab classroomId={classroomId} isInstructor={isInstructor} />
-          </TabsContent>
-
           <TabsContent value="people" className="focus-visible:outline-none">
             <ClassroomPeopleTab classroomId={classroomId} isInstructor={isInstructor} />
           </TabsContent>
+
 
           <TabsContent value="calendar" className="focus-visible:outline-none">
             <ClassroomCalendarTab classroomId={classroomId} isInstructor={isInstructor} />

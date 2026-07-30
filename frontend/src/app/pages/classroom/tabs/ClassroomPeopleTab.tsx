@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { useGetClassroomStudents } from '@/hooks/classroom-hooks';
-import { useGetStudentInsights, useGetStudentAnalyticsRoster, useClassroomSocket } from '@/hooks/classroom-lms-hooks';
+import { useGetStudentInsights, useGetStudentAnalyticsRoster, useClassroomSocket, useCreateAssignment } from '@/hooks/classroom-lms-hooks';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, User, TrendingUp, AlertCircle, CheckCircle, BarChart3, BookOpen, Send, Flag, HelpCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Users, User, TrendingUp, AlertCircle, CheckCircle, BarChart3, BookOpen, Send, Flag, HelpCircle, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { PushCourseModal } from '../components/PushCourseModal';
 
@@ -21,8 +24,31 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
   const { data: simpleStudents, isLoading: isSimpleLoading } = useGetClassroomStudents(classroomId);
   const { data: roster, isLoading: isRosterLoading } = useGetStudentAnalyticsRoster(classroomId);
 
+  const createAssignmentMutation = useCreateAssignment(classroomId);
+
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isPushModalOpen, setIsPushModalOpen] = useState<boolean>(false);
+  const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [points, setPoints] = useState(100);
+  const [dueDate, setDueDate] = useState('');
+  const [assignmentFiles, setAssignmentFiles] = useState<File[]>([]);
+
+  const handleCreateAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !dueDate) return;
+    await createAssignmentMutation.mutateAsync({
+      data: { title, description, points, due_date: dueDate },
+      files: assignmentFiles,
+    });
+    setIsCreateOpen(false);
+    setTitle('');
+    setDescription('');
+    setPoints(100);
+    setDueDate('');
+    setAssignmentFiles([]);
+  };
 
   const isLoading = isInstructor ? isRosterLoading : isSimpleLoading;
 
@@ -41,12 +67,85 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
         </div>
 
         {isInstructor && (
-          <Button size="sm" onClick={() => setIsPushModalOpen(true)}>
-            <Send className="w-4 h-4 mr-1.5" />
-            Push Course to Classroom
-          </Button>
+          <div className="flex items-center gap-3">
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Create Assignment
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Create New Assignment</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleCreateAssignment} className="space-y-4 pt-2">
+                  <div>
+                    <label className="text-xs font-medium">Title *</label>
+                    <Input
+                      required
+                      placeholder="e.g. Assignment 1: Neural Networks"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Instructions / Description</label>
+                    <Textarea
+                      placeholder="Describe task guidelines..."
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium">Points</label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={points}
+                        onChange={(e) => setPoints(Number(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium">Due Date & Time *</label>
+                      <Input
+                        type="datetime-local"
+                        required
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Attachments (PDF/Images/DOCX)</label>
+                    <Input
+                      type="file"
+                      multiple
+                      onChange={(e) => e.target.files && setAssignmentFiles(Array.from(e.target.files))}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={createAssignmentMutation.isPending}>
+                      Publish Assignment
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            <Button size="sm" onClick={() => setIsPushModalOpen(true)}>
+              <Send className="w-4 h-4 mr-1.5" />
+              Push Course to Classroom
+            </Button>
+          </div>
         )}
       </div>
+
 
       <Card className="border border-border/60 bg-card shadow-xs">
         <CardHeader className="pb-3">
