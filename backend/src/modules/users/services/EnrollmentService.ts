@@ -614,7 +614,15 @@ export class EnrollmentService extends BaseService {
         search,
       );
     }
-    if (!enrollments.length) return [];
+    if (!enrollments.length) {
+      if (role === 'STUDENT') {
+        const classroomItems = await this.getClassroomEnrollmentsForStudent(userId);
+        if (classroomItems.length > 0) {
+          return classroomItems;
+        }
+      }
+      return [];
+    }
 
     const enrolledVersionIds: Set<string> = new Set(
       enrollments.map(e => e.courseVersionId.toString()),
@@ -632,7 +640,9 @@ export class EnrollmentService extends BaseService {
       );
 
       const activeEnrollments = enrollments.filter(enr =>
-        activeVersionIds.has(enr.courseVersionId.toString()),
+        activeVersionIds.has(enr.courseVersionId.toString()) ||
+        Boolean(enr.course) ||
+        enr.status === 'active'
       );
 
       // Create a map for quick lookup
@@ -701,7 +711,7 @@ export class EnrollmentService extends BaseService {
       //   ]),
       // );
 
-      return activeEnrollments.map(enr => {
+      const resultList = activeEnrollments.map(enr => {
         const versionIdStr = enr.courseVersionId.toString();
         const watchedKey = `${userId}-${enr.courseId.toString()}-${versionIdStr}-${enr.cohortId?.toString() || ''}`;
 
@@ -747,7 +757,7 @@ export class EnrollmentService extends BaseService {
             status: enr.status,
             enrollmentDate: new Date(enr.enrollmentDate),
             assignedTimeSlot: enr.assignedTimeSlots,
-            course: this.filterCourseVersions(enr.course, enrolledVersionIds),
+            course: this.filterCourseVersions(enr.course, enrolledVersionIds) || enr.course,
             percentCompleted: enr.percentCompleted || 0,
             moduleNumber: enr.moduleNumber,
             sectionNumber: enr.sectionNumber,
@@ -762,9 +772,24 @@ export class EnrollmentService extends BaseService {
             policyReacknowledgementRequired:
               enr.policyReacknowledgementRequired ?? false,
             hpSystem,
+            classroomId: enr.classroomId?.toString(),
+            accepted: enr.accepted,
           };
         }
-      });
+      }).filter(Boolean);
+
+      // Merge any classroom course invitations or accepted classroom enrollments for student
+      try {
+        const activeCourseIds = new Set(resultList.map((e: any) => e.courseId));
+        const classroomItems = await this.getClassroomEnrollmentsForStudent(userId, activeCourseIds);
+        if (classroomItems && classroomItems.length > 0) {
+          resultList.push(...classroomItems);
+        }
+      } catch (err) {
+        console.error('Error merging classroom enrollments in getEnrollments:', err);
+      }
+
+      return resultList;
     }
     // Non-student
     return enrollments.map(enr => ({
@@ -777,6 +802,88 @@ export class EnrollmentService extends BaseService {
       assignedTimeSlot: enr.assignedTimeSlots,
       course: this.filterCourseVersions(enr.course, enrolledVersionIds),
     }));
+  }
+
+  private async getClassroomEnrollmentsForStudent(userId: string, existingCourseIds: Set<string> = new Set()): Promise<any[]> {
+    try {
+      const classroomMemberEnrollCol = await this.database.getCollection<any>('classroom_member_enrollments');
+      const docs = await classroomMemberEnrollCol.find({ student_id: userId }).toArray();
+      if (!docs || docs.length === 0) return [];
+
+      const courseRepoCol = await this.database.getCollection<any>('newCourse');
+      const result: any[] = [];
+
+      for (const doc of docs) {
+        const cId = doc.course_id?.toString();
+        if (!cId) continue;
+
+        const isAccepted = Boolean(doc.accepted);
+        if (existingCourseIds.has(cId) && isAccepted) {
+          continue;
+        }
+
+        let courseDoc: any = null;
+        try {
+          const cObjId = ObjectId.isValid(cId) ? new ObjectId(cId) : cId;
+          courseDoc = await courseRepoCol.findOne({
+            $or: [
+              { _id: cObjId as any },
+              { _id: cId },
+              { id: cId },
+              { courseId: cId }
+            ]
+          });
+        } catch (_) {}
+
+        if (!courseDoc) {
+          // Skip deleted or missing course references
+          continue;
+        }
+
+        const vId = doc.version_id?.toString() ||
+                    courseDoc?.versions?.[0]?._id?.toString() ||
+                    courseDoc?.versions?.[0]?.versionId?.toString() ||
+                    courseDoc?.defaultVersionId?.toString() ||
+                    cId;
+
+        const resolvedTitle = courseDoc?.name || courseDoc?.title || courseDoc?.courseName;
+        if (!resolvedTitle) {
+          continue;
+        }
+
+        result.push({
+          _id: doc._id.toString(),
+          courseId: cId,
+          courseVersionId: vId,
+          classroomId: doc.classroom_id?.toString(),
+          role: 'STUDENT',
+          status: isAccepted ? 'active' : 'PENDING_INVITATION',
+          enrollmentStatus: isAccepted ? 'active' : 'PENDING_INVITATION',
+          accepted: isAccepted,
+          enrollmentDate: doc.enrolled_at ? new Date(doc.enrolled_at) : new Date(),
+          assignedTimeSlot: [],
+          course: {
+            _id: cId,
+            name: resolvedTitle,
+            title: resolvedTitle,
+            description: courseDoc?.description || '',
+            instructors: courseDoc?.instructors || [],
+            thumbnail: courseDoc?.thumbnail || courseDoc?.image || '',
+            modules: courseDoc?.modules || [],
+          },
+          percentCompleted: doc.progress || doc.progress_percentage || 0,
+          completedItems: 0,
+          contentCounts: { totalItems: courseDoc?.totalItems || 0 },
+          hasNewItemsAfterCompletion: false,
+          policyReacknowledgementRequired: false,
+          hpSystem: false,
+        } as any);
+      }
+      return result;
+    } catch (err) {
+      console.error('Error in getClassroomEnrollmentsForStudent:', err);
+      return [];
+    }
   }
 
   public async getActiveCount(
@@ -1040,12 +1147,37 @@ export class EnrollmentService extends BaseService {
         userId,
         session,
       );
-      return result.map(enrollment => ({
+      const mapped = result.map(enrollment => ({
         ...enrollment,
         _id: enrollment._id.toString(),
         courseId: enrollment.courseId.toString(),
         courseVersionId: enrollment.courseVersionId.toString(),
       }));
+
+      try {
+        const classroomMemberEnrollCol = await this.database.getCollection<any>('classroom_member_enrollments');
+        const acceptedDocs = await classroomMemberEnrollCol.find({ student_id: userId, accepted: true }).toArray();
+        if (acceptedDocs && acceptedDocs.length > 0) {
+          const existingVersionIds = new Set(mapped.map(e => e.courseVersionId));
+          for (const doc of acceptedDocs) {
+            const cId = doc.course_id?.toString();
+            const vId = doc.version_id?.toString() || cId;
+            if (cId && vId && !existingVersionIds.has(vId)) {
+              mapped.push({
+                _id: doc._id.toString(),
+                userId,
+                courseId: cId,
+                courseVersionId: vId,
+                role: 'STUDENT',
+                status: 'active',
+                enrollmentDate: doc.enrolled_at ? new Date(doc.enrolled_at) : new Date(),
+              } as any);
+            }
+          }
+        }
+      } catch (_) {}
+
+      return mapped;
     });
   }
 

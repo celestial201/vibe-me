@@ -56,15 +56,22 @@ export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
               </p>
             ) : (
               <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a course to push..." />
+                <SelectTrigger className="w-full h-10 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500">
+                  <SelectValue placeholder="Choose a course to push..." className="text-slate-900 dark:text-slate-100 font-semibold" />
                 </SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c._id} value={c._id}>
-                      {c.name || 'Untitled Course'}
-                    </SelectItem>
-                  ))}
+                <SelectContent className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50">
+                  {courses.map((course: any) => {
+                    const uniqueId = course._id?.toString() || course.id?.toString();
+                    return (
+                      <SelectItem
+                        key={uniqueId}
+                        value={uniqueId}
+                        className="text-slate-900 dark:text-slate-100 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100 cursor-pointer"
+                      >
+                        {course.name || course.title || 'Untitled Course'}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             )}

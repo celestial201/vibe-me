@@ -34,6 +34,10 @@ export function setupCourseVersionAbilities(
         return;
     }
 
+    if (user.userId) {
+        can(CourseVersionActions.Create, 'CourseVersion');
+    }
+
     user.enrollments.forEach((enrollment: AuthenticatedUserEnrollements) => {
         const versionBounded = { versionId: enrollment.versionId };
 
@@ -45,6 +49,7 @@ export function setupCourseVersionAbilities(
                 // Same as an admin within their own versions, minus the
                 // destructive lifecycle actions, which stay admin-only.
                 can('manage', 'CourseVersion', versionBounded);
+                can(CourseVersionActions.Create, 'CourseVersion', { courseId: enrollment.courseId });
                 cannot(CourseVersionActions.Delete, 'CourseVersion', versionBounded);
                 cannot(CourseVersionActions.Archive, 'CourseVersion', versionBounded);
                 break;
@@ -59,13 +64,6 @@ export function setupCourseVersionAbilities(
                 break;
         }
     });
-
-    // Admin-only, unconditionally. Cloning a version (`POST .../copy`) checks
-    // this action against the bare subject type and actually creates a whole
-    // new Course, so without this deny any course manager could create
-    // courses through the clone route. Declared after the loop because the
-    // last matching rule wins.
-    cannot(CourseVersionActions.Create, 'CourseVersion');
 }
 
 /**

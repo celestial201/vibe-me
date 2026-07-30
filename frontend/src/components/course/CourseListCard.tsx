@@ -1,4 +1,4 @@
-import { Clock, Info, Play, Trophy, Headphones, MessageCircle, ExternalLink, Check, Copy, Mail, Activity, BookOpen } from "lucide-react";
+import { Clock, Info, Play, Trophy, Headphones, MessageCircle, ExternalLink, Check, Copy, Mail, Activity, BookOpen, CheckCircle2, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useCourseStore } from "@/store/course-store";
 import { useNavigate } from "@tanstack/react-router";
 import { useState, lazy, Suspense } from "react";
-import { bufferToHex } from "@/utils/helpers";
+import { normalizeIdString } from "@/utils/helpers";
 import { enterFullscreen, exitFullscreen } from "@/utils/fullscreen";
 import { cn } from "@/utils/utils";
 import type { CourseCardProps } from '@/types/course.types';
@@ -26,11 +26,11 @@ const StudentTimeslotModal = lazy(() =>
 );
 
 export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, variant = 'dashboard', className }: CourseCardProps) => {
-  if (!enrollment || !enrollment.courseId || !enrollment.courseVersionId) return null;
+  if (!enrollment || !enrollment.courseId) return null;
 
-  const courseId = bufferToHex(enrollment.courseId as string);
-  const versionId = bufferToHex(enrollment.courseVersionId as string) || "";
-  const cohortId = enrollment?.cohortId ? (typeof enrollment.cohortId === 'string' ? enrollment.cohortId : bufferToHex(enrollment.cohortId as any)) : "";
+  const courseId = normalizeIdString(enrollment.courseId as string) || "";
+  const versionId = normalizeIdString(enrollment.courseVersionId as string) || "";
+  const cohortId = enrollment?.cohortId ? (typeof enrollment.cohortId === 'string' ? enrollment.cohortId : normalizeIdString(enrollment.cohortId as any)) : "";
 
   const { data: courseVersionData } = useCourseVersionById(versionId, variant !== 'available', cohortId || undefined);
   const { setCurrentCourse } = useCourseStore();
@@ -81,7 +81,6 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
     "bg-pink-500/10 text-pink-600 dark:text-pink-400",
   ];
   const iconTheme = iconThemes[index % iconThemes.length];
-
   const hasMenu = variant !== 'available' && isNotGuruSetu;
 
   const handleContinue = async (e?: React.MouseEvent) => {
@@ -129,15 +128,18 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <h3
             className="truncate text-base font-bold leading-tight text-foreground sm:text-lg"
-            title={enrollment?.course?.name || `Course ${index + 1}`}
+            title={enrollment?.course?.name || enrollment?.course?.title || `Course ${index + 1}`}
           >
-            {enrollment?.course?.name || `Course ${index + 1}`}
+            {enrollment?.course?.name || enrollment?.course?.title || `Course ${index + 1}`}
           </h3>
           {isCompleted && (
             <Badge className="border-0 bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">Completed</Badge>
           )}
           {enrollment.cohortName && (
             <Badge variant="outline" className="border-primary/20 text-primary text-[10px]">{enrollment.cohortName}</Badge>
+          )}
+          {isMoreVideosSoon && (
+            <Badge variant="secondary" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px]">More videos soon</Badge>
           )}
         </div>
 
@@ -146,7 +148,6 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
             {instructorName || 'Discover and enroll'}
           </p>
         )}
-
         {variant !== 'available' ? (
           <div className="mt-2.5 space-y-1.5">
             <div className="flex items-center justify-between gap-2 text-xs">
@@ -163,31 +164,29 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
           </div>
         ) : (
           <p className="mt-1.5 text-xs text-muted-foreground">
-            {videoCount} Videos • {quizCount} Quizzes
+            {`${videoCount} Videos • ${quizCount} Quizzes`}
           </p>
         )}
       </div>
 
-      {/* Actions: prominent primary CTA + tidy overflow menu (keeps every action) */}
       <div className="flex shrink-0 items-center gap-2 self-stretch sm:self-center">
-        <Button
-          onClick={handleContinue}
-          className={cn(
-            "h-9 flex-1 gap-1.5 rounded-xl font-bold transition-all duration-200 sm:flex-none",
-            variant === 'available'
-              ? "bg-primary text-primary-foreground hover:bg-primary/90"
-              : progress === 0
-                ? "bg-green-600 text-white hover:bg-green-700"
-                : "bg-primary text-primary-foreground hover:bg-primary/90"
-          )}
-        >
-          {variant === 'available' ? 'Register' : progress === 0 ? 'Start' : isCompleted ? 'Review' : 'Continue'}
-          <Play className="h-3.5 w-3.5 fill-current" />
-        </Button>
+          <Button
+            onClick={handleContinue}
+            className={cn(
+              "h-9 flex-1 gap-1.5 rounded-xl font-bold transition-all duration-200 sm:flex-none",
+              variant === 'available'
+                ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                : progress === 0
+                  ? "bg-green-600 text-white hover:bg-green-700"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+            )}
+          >
+            {variant === 'available' ? 'Register' : progress === 0 ? 'Start' : isCompleted ? 'Review' : 'Continue'}
+            <Play className="h-3.5 w-3.5 fill-current" />
+          </Button>
 
         {hasMenu && (
           <>
-            {/* Book Slot — kept labeled */}
             <Button
               variant="outline"
               onClick={() => setIsTimeslotModalOpen(true)}

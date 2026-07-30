@@ -14,6 +14,7 @@ import { EnrollmentRepository } from '#shared/database/providers/mongo/repositor
 import { SegmentContextProvider } from '#root/modules/studentQuestions/services/context/SegmentContextProvider.js';
 import { ItemRepository } from '#shared/database/providers/mongo/repositories/ItemRepository.js';
 import { COURSES_TYPES } from '#root/modules/courses/types.js';
+import { PowerUpEngine, PowerUpContext } from './PowerUpEngine.js';
 
 @injectable()
 export class BattleService {
@@ -58,9 +59,28 @@ export class BattleService {
   }
 
   public async startBattle(userId: string, courseId: string): Promise<BattleSession> {
-    const { progressPercent } = await this.getUserCourseProgress(userId, courseId);
-    if (progressPercent < 30) {
-      throw new Error(`You must complete at least 30% of the course to enter the Arena. (Current progress: ${progressPercent}%)`);
+    const course = await this.courseRepo.read(courseId);
+    const isInfinite = course?.infiniteArenaEnabled ?? false;
+
+    const { progressPercent, courseEnrollment } = await this.getUserCourseProgress(userId, courseId);
+    const completedMilestones: number[] = courseEnrollment?.arenaProgress?.completedMilestones || [];
+
+    // Evaluation Order:
+    // 1. Check course.infiniteArenaEnabled. If true, bypass all credit and progress checks.
+    if (!isInfinite) {
+      if (progressPercent < 30) {
+        const err: any = new Error(`You must complete at least 30% of the course to enter the Arena. (Current progress: ${progressPercent}%)`);
+        (err as any).httpCode = 403;
+        throw err;
+      }
+
+      const { evaluateArenaEligibility } = await import('./ArenaService.js');
+      const eligibility = evaluateArenaEligibility(progressPercent, completedMilestones);
+      if (eligibility.availableCredits <= 0) {
+        const err: any = new Error('Insufficient credits. Progress through the course to earn more.');
+        (err as any).httpCode = 403;
+        throw err;
+      }
     }
 
     // End any existing active battles for this user
@@ -81,6 +101,9 @@ export class BattleService {
       permanentMultiplier: 1.0,
       consecutiveWins: 0,
       turnNumber: 1,
+      currentRound: 1,
+      maxRounds: 5,
+      extended: false,
       isActive: true,
     });
 
@@ -93,13 +116,11 @@ export class BattleService {
       throw new Error('Battle not found or inactive');
     }
 
-    const { progressPercent, courseEnrollment, completedItemIds } = await this.getUserCourseProgress(
-      battle.userId.toString(),
-      battle.courseId.toString()
-    );
+    const currentRound = battle.currentRound ?? 1;
+    const maxRounds = battle.maxRounds ?? 5;
 
-    if (progressPercent < 30) {
-      throw new Error(`You must complete at least 30% of the course to enter the Arena. (Current progress: ${progressPercent}%)`);
+    if (currentRound > maxRounds || (currentRound === maxRounds && !battle.currentQuestion && (battle.turnNumber || 1) > maxRounds)) {
+      throw new Error(`Round limit of ${maxRounds} reached. Battle must be extended or concluded.`);
     }
 
     // Fetch the course to get its name and description as context for the AI
@@ -108,8 +129,27 @@ export class BattleService {
         throw new Error('Course not found');
     }
 
+    const isInfinite = course.infiniteArenaEnabled ?? false;
+
+    const { progressPercent, courseEnrollment, completedItemIds } = await this.getUserCourseProgress(
+      battle.userId.toString(),
+      battle.courseId.toString()
+    );
+
+    if (!isInfinite && progressPercent < 30) {
+      throw new Error(`You must complete at least 30% of the course to enter the Arena. (Current progress: ${progressPercent}%)`);
+    }
+
     let questionData;
     let usedPreGenerated = false;
+
+    // CACHE CHECK: If we have pre-generated questions in cache, pop one
+    if (battle.cachedQuestions && battle.cachedQuestions.length > 0) {
+        const question = battle.cachedQuestions.pop();
+        battle.currentQuestion = question;
+        await this.arenaRepo.saveBattle(battle);
+        return question;
+    }
 
     if (!usedPreGenerated) {
       let segmentContext = '';
@@ -138,7 +178,7 @@ export class BattleService {
             if (videoItems.length > 0) {
               // Pick up to 4 random completed VIDEO items to form topic context
               const shuffledItems = [...videoItems].sort(() => 0.5 - Math.random());
-              const selectedItems = shuffledItems.slice(0, Math.min(4, shuffledItems.length));
+              const selectedItems = shuffledItems;
               
               completedTopics = selectedItems.map(item => item.name);
             
@@ -163,6 +203,10 @@ export class BattleService {
         {
           name: 'Scenario Analysis',
           instruction: 'Create a practical problem scenario where the student must choose the exact concepts required to solve it.'
+        },
+        {
+          name: 'Fill In The Blank',
+          instruction: 'Create a statement with a crucial concept missing, asking the student to select the card that correctly fills the blank.'
         },
         {
           name: 'Concept Comparison',
@@ -203,14 +247,16 @@ CRITICAL RULE 1: STRICT SCOPING BY PROGRESS (${progressPercent}%)! You MUST ONLY
 CRITICAL RULE 2: QUESTION VARIETY & STYLE! Use the following question style for this turn:
 -> QUESTION STYLE: ${selectedStyle.name}
 -> STYLE INSTRUCTION: ${selectedStyle.instruction}
-CRITICAL RULE 3: Keep it PUNCHY and CONCISE! Scenario/question: 1-2 short sentences max. Card names: 1-4 words max. Explanations: 1 short sentence max.
+CRITICAL RULE 3: Keep it extremely PUNCHY and CONCISE! The entire question must be readable in under 10 seconds. Scenario/question: 1 short sentence max. Card names: 1-4 words max. Explanations: 1 short sentence max.
 CRITICAL RULE 4: IGNORE COURSE STRUCTURE METADATA. Do NOT ask about "video segments", "quizzes", "modules", or "transcripts". Focus strictly on the actual EDUCATIONAL SUBJECT MATTER taught!
 
 ${finalContextText}
 
 Based ONLY on the completed topics within ${progressPercent}% course progress, create a ${selectedStyle.name} question or scenario.
 
-You MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts required to solve the scenario, and others must be plausible but incorrect distractor concepts from the completed topics. Each card must include a short explanation.`;
+You MUST generate a batch of 5 varied questions in JSON format to minimize future API calls.
+For each question, randomly output either a standard Multiple Choice or a 'FILL IN THE BLANK TYPE' question.
+For each question, you MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts required to solve the scenario, and others must be plausible but incorrect distractor concepts from the completed topics. Each card must include a short explanation.`;
 
       try {
         if (!aiConfig.GEMINI_API_KEY) {
@@ -222,33 +268,51 @@ You MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts req
         const responseSchema = {
             type: Type.OBJECT,
             properties: {
-                promptText: { type: Type.STRING, description: "The generated scenario or question" },
-                deck: {
+                batch: {
                     type: Type.ARRAY,
-                    description: "An array of exactly 5 cards mixing correct answers and distractor concepts.",
+                    description: "An array of 5 diverse questions.",
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            name: { type: Type.STRING, description: "Concept Name" },
-                            explanation: { type: Type.STRING, description: "Why this concept is correct or incorrect for the scenario" },
-                            isCorrect: { type: Type.BOOLEAN, description: "True if this concept is part of the correct answer, False if it is a distractor" }
+                            promptText: { type: Type.STRING, description: "The generated scenario or question" },
+                            deck: {
+                                type: Type.ARRAY,
+                                description: "An array of exactly 5 cards mixing correct answers and distractor concepts.",
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        name: { type: Type.STRING, description: "Concept Name" },
+                                        explanation: { type: Type.STRING, description: "Why this concept is correct or incorrect for the scenario" },
+                                        isCorrect: { type: Type.BOOLEAN, description: "True if this concept is part of the correct answer, False if it is a distractor" }
+                                    },
+                                    required: ["name", "explanation", "isCorrect"]
+                                }
+                            },
+                            explanation: { type: Type.STRING, description: "Global learning tip for the scenario" }
                         },
-                        required: ["name", "explanation", "isCorrect"]
+                        required: ["promptText", "deck", "explanation"]
                     }
-                },
-                explanation: { type: Type.STRING, description: "Global learning tip for the scenario" }
+                }
             },
-            required: ["promptText", "deck", "explanation"]
+            required: ["batch"]
         };
 
-        const response = await ai.models.generateContent({
-            model: aiConfig.GEMINI_MODEL || 'gemini-3.6-flash',
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: responseSchema
-            }
+        const abortController = new AbortController();
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("LLM Request Timeout (>45s)")), 45000);
         });
+
+        const response: any = await Promise.race([
+            ai.models.generateContent({
+                model: aiConfig.GEMINI_MODEL || 'gemini-3.6-flash',
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: responseSchema
+                }
+            }),
+            timeoutPromise
+        ]);
         
         const rawText = response.text || '';
         const jsonText = rawText.replace(/```json\n?|\n?```/g, '').trim();
@@ -256,49 +320,65 @@ You MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts req
         questionData = JSON.parse(jsonText);
         console.log("Parsed Question Data:", questionData);
       } catch (e: any) {
-        console.error("AI Generation failed:", e?.message || e);
-        throw new Error("AI Generation failed. Strictly enforcing live question generation.");
+        console.error("AI Generation failed or timed out:", e?.message || e);
+        console.log("Falling back to offline cache...");
+        try {
+            questionData = { batch: [await this.fetchCachedQuestion(completedTopics, battle.courseId.toString())] };
+        } catch (fallbackErr: any) {
+            console.error("Fallback also failed:", fallbackErr);
+            throw new Error("AI Generation failed and no suitable fallback questions were found.");
+        }
       }
     }
 
-    let deck = questionData.deck || questionData.cards || questionData.correctCards || [];
-    
-    if (!deck || deck.length === 0) {
-        throw new Error("AI generated an empty deck or failed to map deck data.");
+    const batch = questionData.batch || [];
+    if (!batch || batch.length === 0) {
+        throw new Error("AI generated an empty batch or failed to map batch data.");
     }
 
-    const finalDeck = deck.map((c: any, index: number) => ({
-        id: `c${index}`,
-        name: c.name || "Unknown Concept",
-        type: 'CONCEPT_ANSWER',
-        description: c.explanation || "No explanation provided",
-        isCorrect: c.isCorrect || false
-    })).sort(() => Math.random() - 0.5);
+    const formattedQuestions = batch.map((q: any) => {
+        const deck = q.deck || q.cards || q.correctCards || [];
+        const finalDeck = deck.map((c: any, index: number) => ({
+            id: `c${index}`,
+            name: c.name || "Unknown Concept",
+            type: 'CONCEPT_ANSWER',
+            description: c.explanation || "No explanation provided",
+            isCorrect: c.isCorrect || false
+        })).sort(() => Math.random() - 0.5).slice(0, 5);
+        
+        const correctConcepts = finalDeck.filter((c: any) => c.isCorrect).map((c: any) => c.name);
+        
+        return {
+            questionId: new Date().getTime().toString() + Math.random().toString(36).substr(2, 5),
+            text: q.promptText || q.question || "Unknown scenario",
+            correctConcepts: correctConcepts,
+            deck: finalDeck,
+            explanation: q.explanation || "No explanation provided"
+        };
+    });
 
-    const sizedDeck = finalDeck.slice(0, 5);
+    if (!battle.cachedQuestions) battle.cachedQuestions = [];
+    battle.cachedQuestions.push(...formattedQuestions);
     
-    const correctConcepts = sizedDeck.filter((c: any) => c.isCorrect).map((c: any) => c.name);
-
-    const question = {
-        questionId: new Date().getTime().toString(),
-        text: questionData.promptText || questionData.question || "Unknown scenario",
-        correctConcepts: correctConcepts,
-        deck: sizedDeck,
-        explanation: questionData.explanation || "No explanation provided"
-    };
-
+    const question = battle.cachedQuestions.pop();
     battle.currentQuestion = question;
     await this.arenaRepo.saveBattle(battle);
     return question;
   }
 
-  public async submitAnswer(battleId: string, submittedCards: string[], powerUp?: string): Promise<any> {
+  public async submitAnswer(battleId: string, submittedCards: string[], powerUp?: string, powerUpSlotIndex?: number): Promise<any> {
     const battle = await this.arenaRepo.getBattleById(battleId);
     if (!battle || !battle.isActive) {
       throw new Error('Battle not found or inactive');
     }
 
-    if (powerUp && battle.inventory.includes(powerUp)) {
+    if (powerUpSlotIndex !== undefined && powerUpSlotIndex !== null) {
+        const pUp = battle.inventory[powerUpSlotIndex];
+        if (pUp) {
+            battle.inventory.splice(powerUpSlotIndex, 1);
+            battle.activePowerUps.push(pUp);
+        }
+    } else if (powerUp && battle.inventory.includes(powerUp)) {
         const pIdx = battle.inventory.indexOf(powerUp);
         if (pIdx !== -1) {
             battle.inventory.splice(pIdx, 1);
@@ -324,65 +404,109 @@ You MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts req
       }
     }
 
-    if (battle.activePowerUps.includes('The Joker')) {
-        battle.activePowerUps = battle.activePowerUps.filter(p => p !== 'The Joker');
-        correctCount = correctConcepts.length;
-        hasMistake = false;
+    // Generate opponent move
+    let cCards: any[] = [];
+    const deck = currentQuestion.deck || [];
+    const correctDeckCards = deck.filter((c: any) => c.isCorrect);
+    const distractors = deck.filter((c: any) => !c.isCorrect);
+    
+    const rand = Math.random();
+    if (rand < 0.1) {
+        cCards = distractors.slice(0, Math.max(1, Math.floor(Math.random() * distractors.length)));
+    } else if (rand < 0.4) {
+        cCards = correctDeckCards.slice(0, 1);
+    } else if (rand < 0.7) {
+        if (distractors.length > 0) {
+            cCards = [...correctDeckCards, distractors[0]];
+        } else {
+            cCards = correctDeckCards;
+        }
+    } else {
+        cCards = correctDeckCards;
+    }
+    if (cCards.length === 0 && deck.length > 0) cCards = [deck[0]];
+
+    let cCorrectCount = 0;
+    let cHasMistake = false;
+    for (const card of cCards) {
+      if (card.isCorrect) {
+          cCorrectCount++;
+      } else {
+          cHasMistake = true;
+      }
     }
 
-    if (battle.activePowerUps.includes('Wildcard')) {
-        battle.activePowerUps = battle.activePowerUps.filter(p => p !== 'Wildcard');
-        correctCount += 1;
+    const context: PowerUpContext = {
+        battle: battle,
+        currentQuestion: currentQuestion,
+        player: {
+            submittedCards: submittedCards,
+            correctConcepts: correctConcepts,
+            correctCount: correctCount,
+            hasMistake: hasMistake,
+            basePoints: 0,
+            multiplier: 1.0,
+            comboName: "None",
+            shieldUsed: false,
+            consecutiveWins: battle.consecutiveWins
+        },
+        opponent: {
+            playedCards: cCards,
+            correctCount: cCorrectCount,
+            hasMistake: cHasMistake,
+            basePoints: 0,
+            multiplier: 1.0,
+            comboName: "Single Strike",
+            scoreDelta: 0
+        }
+    };
+
+    // Calculate Opponent base
+    if (!context.opponent.hasMistake && context.opponent.correctCount > 0) {
+        if (context.opponent.correctCount === 2) { context.opponent.multiplier = 1.5; context.opponent.comboName = "Pair Combo!"; }
+        else if (context.opponent.correctCount === 3) { context.opponent.multiplier = 2.5; context.opponent.comboName = "Three of a Kind!"; }
+        else if (context.opponent.correctCount >= 4) { context.opponent.multiplier = 3.0; context.opponent.comboName = "Four of a Kind!"; }
+        context.opponent.scoreDelta = Math.round(50 * context.opponent.multiplier);
+    } else {
+        context.opponent.multiplier = 0;
+        context.opponent.comboName = "Combo Broken!";
+        context.opponent.scoreDelta = -30;
     }
 
-    if (battle.activePowerUps.includes('Reversal')) {
-        battle.activePowerUps = battle.activePowerUps.filter(p => p !== 'Reversal');
+    // Apply Power-Ups using Strategy Pattern
+    for (const pUp of battle.activePowerUps) {
+        PowerUpEngine.apply(pUp, context);
     }
 
-    if (battle.activePowerUps.includes('Blocker')) {
-        battle.activePowerUps = battle.activePowerUps.filter(p => p !== 'Blocker');
-    }
+    // One-round duration constraint: wipe all active powerups immediately after applying logic
+    battle.activePowerUps = [];
 
-    let multiplier = 1.0;
-    let comboName = "None";
-    let basePoints = 0;
-
-    let shieldUsed = false;
-    if (hasMistake && battle.activePowerUps.includes('Shield')) {
-        shieldUsed = true;
-        battle.activePowerUps = battle.activePowerUps.filter(p => p !== 'Shield');
-    }
-
-    if (hasMistake) {
-        basePoints = shieldUsed ? 0 : -30;
-        multiplier = 1.0;
-        comboName = "None";
+    // Finalize Player Score
+    if (context.player.hasMistake) {
+        context.player.basePoints = context.player.shieldUsed ? 0 : -30;
+        context.player.multiplier = 1.0;
+        context.player.comboName = "None";
         battle.consecutiveWins = 0;
     } else {
-        basePoints = 50;
+        context.player.basePoints = 50;
         battle.consecutiveWins += 1;
         
-        if (correctCount === 2) {
-            multiplier = 1.5;
-            comboName = "Pair";
-        } else if (correctCount === 3) {
-            multiplier = 2.5;
-            comboName = "Three of a Kind";
-        } else if (correctCount === 4) {
-            multiplier = 3.0;
-            comboName = "Flush";
-        } else if (correctCount >= 5) {
-            multiplier = 4.0;
-            comboName = "Full House";
-        }
-        
-        if (battle.activePowerUps.includes('Quick Counter') && battle.consecutiveWins >= 2) {
-            battle.permanentMultiplier = 2.0;
-            battle.activePowerUps = battle.activePowerUps.filter(p => p !== 'Quick Counter');
+        if (context.player.correctCount === 2) {
+            context.player.multiplier = 1.5;
+            context.player.comboName = "Pair";
+        } else if (context.player.correctCount === 3) {
+            context.player.multiplier = 2.5;
+            context.player.comboName = "Three of a Kind";
+        } else if (context.player.correctCount === 4) {
+            context.player.multiplier = 3.0;
+            context.player.comboName = "Flush";
+        } else if (context.player.correctCount >= 5) {
+            context.player.multiplier = 4.0;
+            context.player.comboName = "Full House";
         }
     }
-    
-    let pointsEarned = Math.round(basePoints * multiplier);
+
+    let pointsEarned = Math.round(context.player.basePoints * context.player.multiplier);
     if (pointsEarned > 0 && battle.permanentMultiplier > 1.0) {
         pointsEarned = Math.round(pointsEarned * battle.permanentMultiplier);
     }
@@ -406,7 +530,6 @@ You MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts req
     
     if (pointsEarned > 0) {
         battle.hpMilestoneProgress += pointsEarned;
-        battle.powerUpMilestoneProgress += pointsEarned;
         
         while (battle.hpMilestoneProgress >= 250) {
             triggerHpEvent = true;
@@ -414,19 +537,46 @@ You MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts req
         }
         
         // Power-Up Milestone: Every 100 points reached (Max 3 inventory slots)
-        while (battle.powerUpMilestoneProgress >= 100) {
-            battle.powerUpMilestoneProgress -= 100;
-            if (battle.inventory.length < 3) {
-                const powerUps = ['Shield', 'Wildcard', 'Quick Counter', 'The Joker', 'Reversal', 'Blocker'];
-                powerUpGranted = powerUps[Math.floor(Math.random() * powerUps.length)];
-                battle.inventory.push(powerUpGranted);
+        const currentMilestone = Math.floor(battle.totalPoints / 100) * 100;
+        const lastMilestone = battle.lastPowerCardMilestoneAchieved || 0;
+        
+        if (currentMilestone >= 100 && currentMilestone > lastMilestone) {
+            const milestonesCrossed = Math.floor((currentMilestone - lastMilestone) / 100);
+            for (let i = 0; i < milestonesCrossed; i++) {
+                if (battle.inventory.length < 3) {
+                    const powerUps = ['Shield', 'Wildcard', 'Quick Counter', 'The Joker', 'Reversal', 'Blocker'];
+                    powerUpGranted = powerUps[Math.floor(Math.random() * powerUps.length)];
+                    battle.inventory.push(powerUpGranted);
+                }
             }
+            battle.lastPowerCardMilestoneAchieved = currentMilestone;
         }
     }
 
-    const actionSummary = hasMistake ? (shieldUsed ? 'Shield blocked loss' : 'Loss') : 'Win';
+    // Apply opponent score delta to computerScore
+    battle.computerScore = Math.max(0, (battle.computerScore || 0) + context.opponent.scoreDelta);
+
+    const actionSummary = context.player.hasMistake ? (context.player.shieldUsed ? 'Shield blocked loss' : 'Loss') : 'Win';
 
     battle.currentQuestion = null;
+
+    const maxRounds = battle.maxRounds ?? 5;
+    const currentRound = battle.currentRound ?? 1;
+
+    // Advance round or update status if cap reached
+    if (currentRound < maxRounds) {
+      battle.currentRound = currentRound + 1;
+      battle.turnNumber = (battle.turnNumber || 1) + 1;
+      battle.status = 'ACTIVE';
+    } else if (currentRound === maxRounds) {
+      battle.turnNumber = (battle.turnNumber || 1) + 1;
+      if (maxRounds === 5) {
+        battle.status = 'AWAITING_EXTENSION';
+      } else if (maxRounds >= 10) {
+        battle.isActive = false; // Auto terminate when 10-round cap reached
+        battle.status = 'COMPLETED';
+      }
+    }
 
     await this.arenaRepo.saveBattle(battle);
 
@@ -437,9 +587,9 @@ You MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts req
     return {
       success: true,
       actionSummary,
-      comboName,
-      basePoints,
-      multiplier,
+      comboName: context.player.comboName,
+      basePoints: context.player.basePoints,
+      multiplier: context.player.multiplier,
       permanentMultiplier: battle.permanentMultiplier,
       pointsEarned,
       milestoneChecks: {
@@ -448,12 +598,184 @@ You MUST generate EXACTLY 5 cards in the deck. Some must be correct concepts req
         hpProgress: battle.hpMilestoneProgress,
         powerUpProgress: battle.powerUpMilestoneProgress
       },
+      computerResult: {
+        cards: context.opponent.playedCards,
+        comboName: context.opponent.comboName,
+        multiplier: context.opponent.multiplier,
+        scoreDelta: context.opponent.scoreDelta,
+        totalScore: battle.computerScore
+      },
       battle: {
         totalPoints: battle.totalPoints,
+        computerScore: battle.computerScore,
         inventory: battle.inventory,
         activePowerUps: battle.activePowerUps,
+        currentRound: battle.currentRound,
+        maxRounds: battle.maxRounds,
+        extended: battle.extended ?? false,
+        status: battle.status || 'ACTIVE',
         isActive: battle.isActive
       }
     };
+  }
+
+  public async extendBattle(battleId: string): Promise<any> {
+    const battle = await this.arenaRepo.getBattleById(battleId);
+    if (!battle) {
+      throw new Error('Battle not found');
+    }
+
+    // Idempotency check: If already extended to 10 rounds (e.g. double dispatch/race condition), return success gracefully instead of throwing 500 error
+    if (battle.extended && battle.maxRounds === 10) {
+      return {
+        success: true,
+        message: 'Battle is already extended to 10 rounds.',
+        battle: {
+          _id: battle._id ? battle._id.toString() : undefined,
+          currentRound: battle.currentRound,
+          maxRounds: battle.maxRounds,
+          extended: battle.extended,
+          status: battle.status || 'ACTIVE',
+          isActive: battle.isActive
+        }
+      };
+    }
+
+    if (!battle.isActive) {
+      throw new Error('Battle not found or inactive');
+    }
+
+    const currentRound = battle.currentRound ?? 1;
+    const maxRounds = battle.maxRounds ?? 5;
+
+    if (maxRounds !== 5 || currentRound !== 5) {
+      throw new Error('Battle cannot be extended. Extension is only permitted at Round 5.');
+    }
+
+    battle.maxRounds = 10;
+    battle.extended = true;
+    battle.currentRound = 6;
+    battle.status = 'ACTIVE';
+    await this.arenaRepo.saveBattle(battle);
+
+    return {
+      success: true,
+      message: 'Battle extended to 10 rounds.',
+      battle: {
+        _id: battle._id ? battle._id.toString() : undefined,
+        currentRound: battle.currentRound,
+        maxRounds: battle.maxRounds,
+        extended: battle.extended,
+        status: battle.status,
+        isActive: battle.isActive
+      }
+    };
+  }
+
+  public async concludeBattle(battleId: string): Promise<any> {
+    const battle = await this.arenaRepo.getBattleById(battleId);
+    if (!battle) {
+      throw new Error('Battle not found');
+    }
+
+    battle.isActive = false;
+    battle.status = 'COMPLETED';
+    await this.arenaRepo.saveBattle(battle);
+
+    return {
+      success: true,
+      message: 'Battle concluded.',
+      battle: {
+        _id: battle._id ? battle._id.toString() : undefined,
+        totalPoints: battle.totalPoints,
+        currentRound: battle.currentRound,
+        maxRounds: battle.maxRounds,
+        status: battle.status,
+        isActive: false
+      }
+    };
+  }
+
+  private async fetchCachedQuestion(completedTopics: string[], courseId: string): Promise<any> {
+    try {
+        const questionsCol = await this.arenaRepo.getCollection('questions');
+        let pipeline: any[] = [];
+        
+        if (completedTopics && completedTopics.length > 0) {
+            pipeline = [
+                {
+                    $match: {
+                        'topic': { $in: completedTopics }
+                    }
+                },
+                { $sample: { size: 1 } }
+            ];
+        } else {
+            // If no completed topics, fall back to any question in the current course
+            // If the schema doesn't explicitly store courseId on questions, we try matching common fields or just sample
+            pipeline = [
+                {
+                    $match: {
+                        $or: [
+                            { courseId: courseId },
+                            { "source.courseId": courseId },
+                            { courseId: new (await import('mongodb')).ObjectId(courseId) }
+                        ]
+                    }
+                },
+                { $sample: { size: 1 } }
+            ];
+        }
+        
+        const results = await questionsCol.aggregate(pipeline).toArray();
+        if (results && results.length > 0) {
+            const fallbackQ = results[0];
+            
+            // Map to the generated AI structure
+            const correctCard = {
+                name: fallbackQ.correctLotItem?.text || fallbackQ.correctLotItem?.title || "Correct Concept",
+                explanation: fallbackQ.correctLotItem?.explaination || "Correct answer from database",
+                isCorrect: true
+            };
+            
+            const distractors = (fallbackQ.incorrectLotItems || []).map((item: any) => ({
+                name: item.text || item.title || "Incorrect Concept",
+                explanation: item.explaination || "Distractor from database",
+                isCorrect: false
+            }));
+            
+            return {
+                promptText: fallbackQ.text || "Fallback Question",
+                deck: [correctCard, ...distractors],
+                explanation: fallbackQ.hint || "No explanation"
+            };
+        }
+        
+        // Final fallback if course matching fails: just grab ANY random question so the game doesn't crash
+        const anyResults = await questionsCol.aggregate([{ $sample: { size: 1 } }]).toArray();
+        if (anyResults && anyResults.length > 0) {
+             const fallbackQ = anyResults[0];
+             const correctCard = {
+                name: fallbackQ.correctLotItem?.text || fallbackQ.correctLotItem?.title || "Correct Concept",
+                explanation: fallbackQ.correctLotItem?.explaination || "Correct answer from database",
+                isCorrect: true
+             };
+             const distractors = (fallbackQ.incorrectLotItems || []).map((item: any) => ({
+                name: item.text || item.title || "Incorrect Concept",
+                explanation: item.explaination || "Distractor from database",
+                isCorrect: false
+             }));
+             return {
+                promptText: fallbackQ.text || "Fallback Question",
+                deck: [correctCard, ...distractors],
+                explanation: fallbackQ.hint || "No explanation"
+             };
+        }
+
+        throw new Error("No matching fallback questions found.");
+    } catch (e) {
+        console.error("Error fetching cached question:", e);
+        throw e;
+    }
   }
 }

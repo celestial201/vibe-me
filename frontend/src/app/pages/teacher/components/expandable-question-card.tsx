@@ -1178,7 +1178,6 @@ const ExpandableQuestionCard: React.FC<ExpandableQuestionCardProps> = ({
                     Edit Question
                   </Button>
                 ) : null}
-
               </div>
             </div>
           </CollapsibleContent>

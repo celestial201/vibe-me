@@ -23,12 +23,20 @@ export class BattleSession {
   totalPoints: number;
 
   @Expose()
+  @JSONSchema({ title: 'Computer Score', type: 'number' })
+  computerScore: number;
+
+  @Expose()
   @JSONSchema({ title: 'HP Milestone Progress', type: 'number' })
   hpMilestoneProgress: number;
 
   @Expose()
   @JSONSchema({ title: 'Power-Up Milestone Progress', type: 'number' })
   powerUpMilestoneProgress: number;
+
+  @Expose()
+  @JSONSchema({ title: 'Last Power Card Milestone Achieved', type: 'number' })
+  lastPowerCardMilestoneAchieved: number;
 
   @Expose()
   @JSONSchema({ title: 'Inventory', type: 'array', items: { type: 'string' } })
@@ -51,12 +59,32 @@ export class BattleSession {
   turnNumber: number;
 
   @Expose()
+  @JSONSchema({ title: 'Current Round', type: 'number' })
+  currentRound: number;
+
+  @Expose()
+  @JSONSchema({ title: 'Max Rounds', type: 'number' })
+  maxRounds: number;
+
+  @Expose()
+  @JSONSchema({ title: 'Extended', type: 'boolean' })
+  extended: boolean;
+
+  @Expose()
+  @JSONSchema({ title: 'Status', type: 'string' })
+  status: string;
+
+  @Expose()
   @JSONSchema({ title: 'Is Active', type: 'boolean' })
   isActive: boolean;
 
   @Expose()
   @JSONSchema({ title: 'Current Question', type: 'object' })
   currentQuestion?: any;
+
+  @Expose()
+  @JSONSchema({ title: 'Cached Questions', type: 'array', items: { type: 'object' } })
+  cachedQuestions?: any[];
 
   @Expose()
   @Type(() => Date)
@@ -67,15 +95,22 @@ export class BattleSession {
     this.userId = partial?.userId || '';
     this.courseId = partial?.courseId || '';
     this.totalPoints = partial?.totalPoints ?? 0;
+    this.computerScore = partial?.computerScore ?? 0;
     this.hpMilestoneProgress = partial?.hpMilestoneProgress ?? 0;
     this.powerUpMilestoneProgress = partial?.powerUpMilestoneProgress ?? 0;
+    this.lastPowerCardMilestoneAchieved = partial?.lastPowerCardMilestoneAchieved ?? 0;
     this.inventory = partial?.inventory ?? [];
     this.activePowerUps = partial?.activePowerUps ?? [];
     this.permanentMultiplier = partial?.permanentMultiplier ?? 1.0;
     this.consecutiveWins = partial?.consecutiveWins ?? 0;
     this.turnNumber = partial?.turnNumber ?? 1;
+    this.currentRound = partial?.currentRound ?? 1;
+    this.maxRounds = partial?.maxRounds ?? 5;
+    this.extended = partial?.extended ?? false;
+    this.status = partial?.status || 'ACTIVE';
     this.isActive = partial?.isActive ?? true;
     this.currentQuestion = partial?.currentQuestion || null;
+    this.cachedQuestions = partial?.cachedQuestions ?? [];
     this.createdAt = new Date();
   }
 }

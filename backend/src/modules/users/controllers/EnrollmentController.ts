@@ -1177,6 +1177,11 @@ export class EnrollmentController {
     @Req() req: any,
   ): Promise<EnrollmentResponse> {
     const {page, limit, search = '', role, courseVersionId, cohortId} = query;
+
+    if (courseVersionId && (!ObjectId.isValid(courseVersionId) || courseVersionId === '[object Object]')) {
+      throw new BadRequestError('Invalid courseVersionId parameter. Must be a 24-character hex string.');
+    }
+
     const userId = user._id.toString();
     const skip = (page - 1) * limit;
     // 🚀 Run DB queries in parallel

@@ -142,9 +142,19 @@ export class ClassroomRepository implements IClassroomRepository {
       classroomId: toObjectId(member.classroomId as string),
       studentId: toObjectId(member.studentId as string),
     };
-    const result = await this.members.insertOne(doc as any);
-    return { ...member, _id: result.insertedId.toString() };
+    try {
+      const result = await this.members.insertOne(doc as any);
+      return { ...member, _id: result.insertedId.toString() };
+    } catch (err: any) {
+      if (err?.code === 11000) {
+        const existing = await this.findMember(member.classroomId?.toString() ?? '', member.studentId?.toString() ?? '');
+        if (existing) return existing;
+      }
+
+      throw err;
+    }
   }
+
 
   async findMember(classroomId: string, studentId: string): Promise<IClassroomMember | null> {
     await this.init();
@@ -284,6 +294,61 @@ export class ClassroomRepository implements IClassroomRepository {
   async deleteCoursesByClassroom(classroomId: string): Promise<void> {
     await this.init();
     await this.courses.deleteMany({ classroomId: toObjectId(classroomId) as any });
+  }
+
+  async deleteMemberEnrollmentsByClassroom(classroomId: string): Promise<void> {
+    await this.init();
+    const cObjId = toObjectId(classroomId);
+
+    // 1. Delete classroom_member_enrollments
+    try {
+      const memberEnrollCol = await this.db.getCollection<any>('classroom_member_enrollments');
+      await memberEnrollCol.deleteMany({
+        $or: [
+          { classroom_id: classroomId },
+          { classroom_id: cObjId },
+          { source_classroom_id: classroomId },
+          { source_classroom_id: cObjId },
+        ],
+      });
+    } catch (e) {
+      console.error('Failed to cascade delete classroom_member_enrollments:', e);
+    }
+
+    // 2. Delete main enrollments specifically granted by this classroom (leaving self-enrolled untouched)
+    try {
+      const mainEnrollCol = await this.db.getCollection<any>('enrollments');
+      await mainEnrollCol.deleteMany({
+        $or: [
+          { classroomId: classroomId },
+          { classroomId: cObjId },
+          { sourceClassroomId: classroomId },
+          { sourceClassroomId: cObjId },
+          { source_classroom_id: classroomId },
+          { source_classroom_id: cObjId },
+        ],
+      });
+    } catch (e) {
+      console.error('Failed to cascade delete classroom main enrollments:', e);
+    }
+
+    // 3. Delete classroom announcements, assignments, and submissions
+    try {
+      const annCol = await this.db.getCollection<any>('classroom_announcements');
+      await annCol.deleteMany({
+        $or: [{ classroom_id: classroomId }, { classroom_id: cObjId }],
+      });
+      const assignCol = await this.db.getCollection<any>('classroom_assignments');
+      await assignCol.deleteMany({
+        $or: [{ classroom_id: classroomId }, { classroom_id: cObjId }],
+      });
+      const subCol = await this.db.getCollection<any>('classroom_submissions');
+      await subCol.deleteMany({
+        $or: [{ classroom_id: classroomId }, { classroom_id: cObjId }],
+      });
+    } catch (e) {
+      console.error('Failed to cascade delete classroom LMS artifacts:', e);
+    }
   }
 
   // ── Utility ─────────────────────────────────────────────────────────────────

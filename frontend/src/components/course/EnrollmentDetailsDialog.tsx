@@ -1,6 +1,6 @@
 // Create a new component: EnrollmentDetailsDialog.tsx
 import { useUserEnrollmentsDetails, useCourseVersionById } from "@/hooks/hooks";
-import { bufferToHex } from '@/utils/helpers';
+import { bufferToHex, normalizeIdString } from '@/utils/helpers';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,21 +34,9 @@ export function EnrollmentDetailsDialog({
   enrollment
 }: EnrollmentDetailsDialogProps) {
 
-  const normalizeId = (value: any): string | undefined => {
-    if (!value) return undefined;
-    if (typeof value === 'string') return value;
-    try {
-      return bufferToHex(value);
-    } catch {
-      return value?.toString?.();
-    }
-  };
-
-  const courseVersionId = bufferToHex(enrollment.courseVersionId);
-  const cohortId = enrollment?.cohortId
-    ? bufferToHex(enrollment.cohortId)
-    : undefined;
-  const enrollmentId = normalizeId(enrollment?._id);
+  const courseVersionId = normalizeIdString(enrollment?.courseVersionId || enrollment?.versionId) || undefined;
+  const cohortId = normalizeIdString(enrollment?.cohortId) || undefined;
+  const enrollmentId = normalizeIdString(enrollment?._id);
   // Hook is only called when this component is mounted
   const {
     data: enrollmentDetails,
@@ -62,8 +50,8 @@ export function EnrollmentDetailsDialog({
 
 
   const matchedEnrollment = enrollmentDetails?.enrollments?.find((entry: any) => {
-    const entryId = normalizeId(entry?._id);
-    const entryCohortId = normalizeId(entry?.cohortId);
+    const entryId = normalizeIdString(entry?._id);
+    const entryCohortId = normalizeIdString(entry?.cohortId);
 
     if (enrollmentId && entryId === enrollmentId) {
       return true;

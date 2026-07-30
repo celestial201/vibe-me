@@ -56,7 +56,13 @@ export function AppSidebar() {
         items: [
           { title: "Create Course", url: "/teacher/courses/create" },
           { title: "All Courses", url: "/teacher" },
+          { title: "Arena Monitor", url: "/teacher/arena-monitor" },
         ],
+      },
+      {
+        title: "Arena Monitor",
+        url: "/teacher/arena-monitor",
+        icon: Shield,
       },
       {
         title: "Announcements",

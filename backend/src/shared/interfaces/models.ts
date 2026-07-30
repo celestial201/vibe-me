@@ -42,6 +42,7 @@ export interface ICourse {
   description: string;
   versions: ID[];
   instructors: ID[];
+  infiniteArenaEnabled?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
   isDeleted?: boolean;
@@ -1191,9 +1192,12 @@ export interface IClassroomAnnouncement {
   author_id: ID;
   content: string;
   type?: 'text' | 'assignment' | 'course_invitation';
+  referenceId?: ID;
   metadata?: {
     course_id?: ID;
+    courseId?: ID;
     course_title?: string;
+    courseTitle?: string;
     course_thumbnail?: string;
   };
   attachments?: string[];

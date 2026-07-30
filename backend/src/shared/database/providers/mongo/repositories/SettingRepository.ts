@@ -685,13 +685,18 @@ export class SettingRepository implements ISettingRepository {
     ];
 
     if (enrolledCourseVersionIds.length > 0) {
-      pipeline.push({
-        $match: {
-          courseVersionId: {
-            $nin: enrolledCourseVersionIds.map(id => new ObjectId(id)),
+      const validOids = enrolledCourseVersionIds
+        .filter(id => id && ObjectId.isValid(String(id)))
+        .map(id => new ObjectId(String(id)));
+      if (validOids.length > 0) {
+        pipeline.push({
+          $match: {
+            courseVersionId: {
+              $nin: validOids,
+            },
           },
-        },
-      });
+        });
+      }
     }
 
     if (search) {
@@ -786,21 +791,27 @@ export class SettingRepository implements ISettingRepository {
     ];
 
     if (enrolledCourseVersionIds.length > 0) {
-      pipeline.push({
-        $match: {
-          courseVersionId: {
-            $nin: enrolledCourseVersionIds.map(id => new ObjectId(id)),
+      const validOids = enrolledCourseVersionIds
+        .filter(id => id && ObjectId.isValid(String(id)))
+        .map(id => new ObjectId(String(id)));
+      if (validOids.length > 0) {
+        pipeline.push({
+          $match: {
+            courseVersionId: {
+              $nin: validOids,
+            },
           },
-        },
-      });
+        });
+      }
     }
 
-    if (search) {
+    if (search && search.trim() !== '') {
+      const sanitizedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       pipeline.push({
         $match: {
           $or: [
-            {'courseData.name': {$regex: search, $options: 'i'}},
-            {'courseData.description': {$regex: search, $options: 'i'}},
+            {'courseData.name': {$regex: sanitizedSearch, $options: 'i'}},
+            {'courseData.description': {$regex: sanitizedSearch, $options: 'i'}},
           ],
         },
       });
@@ -873,6 +884,14 @@ export class SettingRepository implements ISettingRepository {
   ) {
     await this.init();
 
+    const validEnrolledCohortOids = (enrolledCohortIds || [])
+      .filter(id => id && ObjectId.isValid(String(id)))
+      .map(id => new ObjectId(String(id)));
+
+    const validEnrolledVersionOids = (enrolledVersionIds || [])
+      .filter(id => id && ObjectId.isValid(String(id)))
+      .map(id => new ObjectId(String(id)));
+
     const pipeline: any[] = [
       /*
       -------------------------
@@ -884,7 +903,9 @@ export class SettingRepository implements ISettingRepository {
         $match: {
           isPublic: true,
           isDeleted: {$ne: true},
-          _id: {$nin: enrolledCohortIds.map(id => new ObjectId(id))},
+          ...(validEnrolledCohortOids.length > 0
+            ? {_id: {$nin: validEnrolledCohortOids}}
+            : {}),
         },
       },
 
@@ -946,9 +967,9 @@ export class SettingRepository implements ISettingRepository {
             {
               $match: {
                 'settings.isPublic': true,
-                courseVersionId: {
-                  $nin: enrolledVersionIds.map(id => new ObjectId(id)),
-                },
+                ...(validEnrolledVersionOids.length > 0
+                  ? {courseVersionId: {$nin: validEnrolledVersionOids}}
+                  : {}),
               },
             },
 

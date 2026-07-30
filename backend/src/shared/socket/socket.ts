@@ -74,3 +74,25 @@ export function emitNewNotification(userId: string, data: any) {
     io.to(`user_${userId}`).emit('new_notification', data);
   }
 }
+
+export function emitCoursePushed(classroomId: string, memberIds: string[], data: any) {
+  if (io) {
+    if (classroomId) {
+      io.to(`classroom_${classroomId}`).emit('course_pushed', data);
+    }
+    if (Array.isArray(memberIds)) {
+      memberIds.forEach((studentId) => {
+        if (studentId) {
+          io.to(`user_${studentId}`).emit('course_pushed', data);
+        }
+      });
+    }
+  }
+}
+
+export function emitEnrollmentAccepted(classroomId: string, studentId: string, courseId: string) {
+  if (io && classroomId) {
+    io.to(`classroom_${classroomId}`).emit('enrollment_accepted', { studentId, courseId });
+  }
+}
+

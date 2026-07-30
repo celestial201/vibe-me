@@ -1,6 +1,6 @@
 import { openapi } from '@/lib/openapi';
 
-const BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:3141/api';
+export const BASE_URL = import.meta.env.VITE_BASE_URL || 'http://localhost:3141/api';
 
 export interface AnnouncementDTO {
   _id: string;
@@ -348,7 +348,10 @@ export const classroomLmsApi = {
       },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error('Failed to push course to classroom');
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || errJson.error || 'Failed to push course to classroom');
+    }
     return res.json();
   },
 

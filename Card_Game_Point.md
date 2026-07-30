@@ -44,7 +44,7 @@ Apply the following rules when evaluating played card hands:
 3. **Quick Counter:** Once activated, if the player wins 2 consecutive turns immediately following usage, all future point gains are **permanently doubled (2x)** for the rest of the game session.
 4. **The Joker:** Automatically picks up the correct answer cards from the current hand and plays a combination such that it gives the maximum point gain.
 5. **Reversal:** Cast on an opponent; reverses their outcome for the current turn (Win becomes Loss, Loss becomes Win).
-6. **Blocker:** Blocks 1 targeted card from the opponent's active hand.
+6. **Blocker:** Blocks the point gain of the opponent's active hand.
 
 ---
 

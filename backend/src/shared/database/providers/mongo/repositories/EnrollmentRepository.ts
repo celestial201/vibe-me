@@ -4170,11 +4170,15 @@ export class EnrollmentRepository {
 
     // ✅ Add courseVersionId filter if provided
     if (courseVersionId) {
-      matchStage.courseVersionId = new ObjectId(courseVersionId);
+      matchStage.courseVersionId = ObjectId.isValid(courseVersionId)
+        ? new ObjectId(courseVersionId)
+        : courseVersionId;
     }
 
     if (cohortId) {
-      matchStage.cohortId = new ObjectId(cohortId);
+      matchStage.cohortId = ObjectId.isValid(cohortId)
+        ? new ObjectId(cohortId)
+        : cohortId;
     }
 
     const pipeline: any[] = [

@@ -76,6 +76,14 @@ class Course implements ICourse {
   instructors: ID[];
 
   @Expose()
+  @JSONSchema({
+    title: 'Infinite Arena Credits Enabled',
+    description: 'Whether infinite credits are enabled for this course in the Arena',
+    type: 'boolean',
+  })
+  infiniteArenaEnabled?: boolean;
+
+  @Expose()
   @Type(() => Date)
   @JSONSchema({
     title: 'Course Created At',
@@ -105,6 +113,7 @@ class Course implements ICourse {
 
     this.versions = [];
     this.instructors = [];
+    this.infiniteArenaEnabled = false;
     this.createdAt = new Date();
     this.updatedAt = new Date();
   }
