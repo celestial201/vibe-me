@@ -79,6 +79,7 @@ export default function StudentCourses() {
   const pendingEnrollments = useMemo(() => {
     return enrollments.filter((e: any) =>
       e.accepted === false ||
+      e.status === 'pending_acceptance' ||
       e.enrollmentStatus === 'PENDING_INVITATION' ||
       e.status === 'PENDING_INVITATION'
     );
@@ -87,6 +88,7 @@ export default function StudentCourses() {
   const activeEnrollments = useMemo(() => {
     return enrollments.filter((e: any) =>
       e.accepted !== false &&
+      e.status !== 'pending_acceptance' &&
       e.enrollmentStatus !== 'PENDING_INVITATION' &&
       e.status !== 'PENDING_INVITATION' &&
       (e.percentCompleted !== 100 || e.hasNewItemsAfterCompletion === true)
@@ -96,6 +98,7 @@ export default function StudentCourses() {
   const completedEnrollments = useMemo(() => {
     return enrollments.filter((e: any) =>
       e.accepted !== false &&
+      e.status !== 'pending_acceptance' &&
       e.enrollmentStatus !== 'PENDING_INVITATION' &&
       e.status !== 'PENDING_INVITATION' &&
       e.percentCompleted === 100 &&

@@ -125,13 +125,15 @@ export function useGetAnnouncements(classroomId: string) {
   });
 }
 
-export function useGetPendingAnnouncements(classroomId: string) {
+export function useGetPendingAnnouncements(classroomId: string, isInstructor: boolean = false) {
   return useQuery({
     queryKey: LMS_CK.pendingAnnouncements(classroomId),
     queryFn: () => classroomLmsApi.getPendingAnnouncements(classroomId),
-    enabled: Boolean(classroomId),
+    enabled: !!classroomId && isInstructor === true,
   });
 }
+
+export const usePendingAnnouncements = useGetPendingAnnouncements;
 
 export function useModerateAnnouncement(classroomId: string) {
   const qc = useQueryClient();
@@ -354,11 +356,15 @@ export function useAcceptCourseEnrollment(classroomId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: LMS_CK.analyticsRoster(classroomId) });
       qc.invalidateQueries({ queryKey: LMS_CK.enrollmentStatus(classroomId) });
-      toast.success('Course enrollment accepted!');
+      qc.invalidateQueries({ queryKey: ['enrollments'] });
+      qc.invalidateQueries({ queryKey: ['user-enrollments'] });
+      qc.invalidateQueries({ queryKey: ['classroom-courses'] });
+      toast.success('Course invitation accepted! Added to your My Courses panel.');
     },
     onError: (err: any) => toast.error(err.message || 'Failed to accept course enrollment'),
   });
 }
+
 
 export function useGetStudentEnrollmentStatus(classroomId: string) {
   return useQuery({

@@ -186,11 +186,17 @@ export function useStartClassroomCourse(classroomId: string) {
     mutationFn: (courseId) => classroomApi.startCourse(classroomId, courseId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CK.courses(classroomId) });
-      toast.success('Course started! Enrolled successfully.');
+      qc.invalidateQueries({ queryKey: ['enrollments'] });
+      qc.invalidateQueries({ queryKey: ['user-enrollments'] });
+      qc.invalidateQueries({ queryKey: ['classroom-courses'] });
+      qc.invalidateQueries({ queryKey: ['announcements', classroomId] });
+      qc.invalidateQueries({ queryKey: ['student-enrollment-status', classroomId] });
+      toast.success('Course started! Added to your My Courses panel.');
     },
     onError: (e) => toast.error(e.message ?? 'Failed to start course'),
   });
 }
+
 
 export function useGetClassroomCourseProgress(classroomId: string, courseId: string, enabled = true) {
   return useQuery<import('@/services/classroom-api').StudentProgressDTO[]>({

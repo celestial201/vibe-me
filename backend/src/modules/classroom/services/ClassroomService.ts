@@ -22,6 +22,10 @@ import { IUserRepository } from '#root/shared/database/interfaces/IUserRepositor
 import { EnrollmentService } from '#root/modules/users/services/EnrollmentService.js';
 import { EnrollmentRepository } from '#shared/database/providers/mongo/repositories/EnrollmentRepository.js';
 
+import { AnnouncementRepository } from '../repositories/providers/mongodb/AnnouncementRepository.js';
+import { MongoDatabase } from '#root/shared/database/providers/mongo/MongoDatabase.js';
+import { emitNewAnnouncement } from '#root/shared/socket/socket.js';
+
 const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const CODE_LENGTH = 6;
 
@@ -46,6 +50,10 @@ export class ClassroomService {
     private readonly enrollmentRepo: EnrollmentRepository,
     @inject(GLOBAL_TYPES.UserRepo)
     private readonly userRepo: IUserRepository,
+    @inject(CLASSROOM_TYPES.AnnouncementRepository)
+    private readonly announcementRepo: AnnouncementRepository,
+    @inject(GLOBAL_TYPES.Database)
+    private readonly db: MongoDatabase,
   ) {}
 
 
@@ -179,6 +187,61 @@ export class ClassroomService {
       assignedAt: new Date(),
     };
     const created = await this.repo.assignCourse(data);
+
+    try {
+      const courseDoc = await this.courseRepo.read(body.courseId);
+      const courseTitle = courseDoc?.name || (courseDoc as any)?.title || 'New Course';
+
+      const members = await this.repo.findMembersByClassroom(classroomId);
+      if (members && members.length > 0) {
+        const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+        const bulkOps = members.map((m) => ({
+          updateOne: {
+            filter: {
+              student_id: m.studentId,
+              classroom_id: classroomId,
+              course_id: body.courseId,
+            },
+            update: {
+              $set: {
+                student_id: m.studentId,
+                classroom_id: classroomId,
+                course_id: body.courseId,
+                version_id: body.versionId,
+                source_classroom_id: classroomId,
+                status: 'pending_acceptance',
+                accepted: false,
+                progress: 0,
+                progress_percentage: 0,
+                enrolled_at: new Date(),
+              },
+            },
+            upsert: true,
+          },
+        }));
+        await enrollmentsCol.bulkWrite(bulkOps);
+      }
+
+      const createdAnn = await this.announcementRepo.create({
+        classroom_id: classroomId,
+        author_id: instructorId,
+        content: `🎉 Course Invitation: ${courseTitle}. Open the Courses tab to view and accept your enrollment!`,
+        type: 'course_invitation',
+        metadata: {
+          course_id: body.courseId,
+          courseId: body.courseId,
+          course_title: courseTitle,
+          courseTitle: courseTitle,
+        },
+        status: 'approved',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      emitNewAnnouncement(classroomId, createdAnn);
+    } catch (err) {
+      console.warn('Failed to post announcement for assignCourse:', err);
+    }
+
     return this._toCourseResponse(created);
   }
 
@@ -266,6 +329,67 @@ export class ClassroomService {
           assignedAt: new Date(),
         };
         await this.repo.assignCourse(data);
+
+        // Update classroom_member_enrollments for students in classroom
+        try {
+          const members = await this.repo.findMembersByClassroom(classroomId);
+          if (members && members.length > 0) {
+            const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+            const bulkOps = members.map((m) => ({
+              updateOne: {
+                filter: {
+                  student_id: m.studentId,
+                  classroom_id: classroomId,
+                  course_id: courseId,
+                },
+                update: {
+                  $set: {
+                    student_id: m.studentId,
+                    classroom_id: classroomId,
+                    course_id: courseId,
+                    version_id: versionId,
+                    source_classroom_id: classroomId,
+                    status: 'pending_acceptance',
+                    accepted: false,
+                    progress: 0,
+                    progress_percentage: 0,
+                    enrolled_at: new Date(),
+                  },
+                },
+                upsert: true,
+              },
+            }));
+            await enrollmentsCol.bulkWrite(bulkOps);
+          }
+        } catch (mErr) {
+          console.warn('Failed to update classroom member enrollments:', mErr);
+        }
+
+        // Auto-create stream announcement for course invitation
+        try {
+          const realCourseId = course._id ? course._id.toString() : String(courseId);
+          const courseTitle = course?.name || (course as any)?.title || 'Pushed Course';
+          const createdAnn = await this.announcementRepo.create({
+            classroom_id: classroomId,
+            author_id: instructorId,
+            content: `🎉 Course Invitation: ${courseTitle}. Open the Courses tab to view and accept your enrollment!`,
+            type: 'course_invitation',
+            referenceId: realCourseId,
+            metadata: {
+              course_id: realCourseId,
+              courseId: realCourseId,
+              course_title: courseTitle,
+              courseTitle: courseTitle,
+            },
+            status: 'approved',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          emitNewAnnouncement(classroomId, createdAnn);
+        } catch (annErr) {
+          console.warn('Failed to auto-create stream announcement:', annErr);
+        }
+
         assigned.push({ classroomId, courseId, versionId });
       } catch (err: any) {
         failed.push({ classroomId, reason: err.message || 'Failed to assign course' });
@@ -370,6 +494,17 @@ export class ClassroomService {
       versionId,
       'STUDENT',
     );
+
+    try {
+      const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+      await enrollmentsCol.updateOne(
+        { student_id: studentId, classroom_id: classroomId, course_id: courseId },
+        { $set: { status: 'accepted', accepted: true, accepted_at: new Date() } },
+        { upsert: true }
+      );
+    } catch (eErr) {
+      console.warn('Failed to update classroom member enrollment status:', eErr);
+    }
 
     return {
       success: true,

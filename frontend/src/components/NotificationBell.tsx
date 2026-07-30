@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth-store';
 import {
   useGetNotifications,
   useMarkNotificationRead,
   useNotificationsSocket,
+  getSocketClient,
+  LMS_CK,
 } from '@/hooks/classroom-lms-hooks';
 import { Button } from '@/components/ui/button';
-import { Bell, Clock, BookOpen, MessageSquare, AlertCircle } from 'lucide-react';
+import { Bell, Clock, BookOpen, MessageSquare, AlertCircle, Sparkles } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface NotificationBellProps {
@@ -18,7 +21,9 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
   const { user } = useAuthStore();
   const userId = user?._id || user?.id;
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
+  const [hasUnreadSocket, setHasUnreadSocket] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Socket listener for real-time unread updates
@@ -28,6 +33,45 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
   const markReadMutation = useMarkNotificationRead();
 
   const unreadCount = notifications.length;
+  const showUnreadBadge = unreadCount > 0 || hasUnreadSocket;
+
+  // Socket listener for classroom stream & course push events
+  useEffect(() => {
+    const socket = getSocketClient();
+
+    if (classroomId) {
+      socket.emit('join_classroom', classroomId);
+    }
+    if (userId) {
+      socket.emit('join_user_room', userId);
+    }
+
+    const handleRealtimeUpdate = () => {
+      setHasUnreadSocket(true);
+      if (classroomId) {
+        queryClient.invalidateQueries({ queryKey: LMS_CK.notifications(classroomId) });
+        queryClient.invalidateQueries({ queryKey: LMS_CK.announcements(classroomId) });
+      }
+      queryClient.invalidateQueries({ queryKey: LMS_CK.notifications() });
+      queryClient.invalidateQueries({ queryKey: ['enrollments'] });
+      queryClient.invalidateQueries({ queryKey: ['classroom-courses'] });
+    };
+
+    socket.on('course_pushed', handleRealtimeUpdate);
+    socket.on('stream_updated', handleRealtimeUpdate);
+    socket.on('new_announcement', handleRealtimeUpdate);
+    socket.on('new_notification', handleRealtimeUpdate);
+
+    return () => {
+      socket.off('course_pushed', handleRealtimeUpdate);
+      socket.off('stream_updated', handleRealtimeUpdate);
+      socket.off('new_announcement', handleRealtimeUpdate);
+      socket.off('new_notification', handleRealtimeUpdate);
+      if (classroomId) {
+        socket.emit('leave_classroom', classroomId);
+      }
+    };
+  }, [classroomId, userId, queryClient]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -42,12 +86,18 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
 
   const handleNotificationClick = async (id: string, link: string) => {
     setIsOpen(false);
+    setHasUnreadSocket(false);
     await markReadMutation.mutateAsync(id);
     if (link) {
       navigate({ to: link as any }).catch(() => {
         window.location.href = link;
       });
     }
+  };
+
+  const handleToggleOpen = () => {
+    setIsOpen((prev) => !prev);
+    setHasUnreadSocket(false);
   };
 
   const getIcon = (type: string) => {
@@ -58,6 +108,9 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
         return <AlertCircle className="w-4 h-4 text-amber-500" />;
       case 'new_announcement':
         return <MessageSquare className="w-4 h-4 text-emerald-500" />;
+      case 'course_pushed':
+      case 'course_invitation':
+        return <Sparkles className="w-4 h-4 text-amber-500" />;
       default:
         return <Bell className="w-4 h-4 text-primary" />;
     }
@@ -69,12 +122,12 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
         variant="ghost"
         size="icon"
         className="relative cursor-pointer"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggleOpen}
       >
         <Bell className="w-5 h-5 text-muted-foreground hover:text-foreground transition-colors" />
-        {unreadCount > 0 && (
+        {showUnreadBadge && (
           <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground animate-pulse">
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {unreadCount > 9 ? '9+' : unreadCount > 0 ? unreadCount : '•'}
           </span>
         )}
       </Button>

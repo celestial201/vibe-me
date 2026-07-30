@@ -98,11 +98,12 @@ export function AssignToClassroomModal({
 
               <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
                 {classrooms.map((c) => {
-                  const isChecked = selectedIds.includes(c._id)
+                  const cid = (c as any)._id?.toString() || (c as any).id?.toString() || c._id;
+                  const isChecked = selectedIds.includes(cid);
                   return (
                     <div
-                      key={c._id}
-                      onClick={() => handleToggleClassroom(c._id)}
+                      key={cid}
+                      onClick={() => handleToggleClassroom(cid)}
                       className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
                         isChecked
                           ? 'border-primary bg-primary/5 dark:bg-primary/10'
@@ -111,13 +112,13 @@ export function AssignToClassroomModal({
                     >
                       <div className="flex items-center space-x-3">
                         <Checkbox
-                          id={`classroom-${c._id}`}
+                          id={`classroom-${cid}`}
                           checked={isChecked}
-                          onCheckedChange={() => handleToggleClassroom(c._id)}
+                          onCheckedChange={() => handleToggleClassroom(cid)}
                           onClick={(e) => e.stopPropagation()}
                         />
                         <Label
-                          htmlFor={`classroom-${c._id}`}
+                          htmlFor={`classroom-${cid}`}
                           className="font-medium text-sm cursor-pointer"
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -128,7 +129,7 @@ export function AssignToClassroomModal({
                         {c.code}
                       </span>
                     </div>
-                  )
+                  );
                 })}
               </div>
 

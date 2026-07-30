@@ -60,15 +60,18 @@ export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
                   <SelectValue placeholder="Choose a course to push..." className="text-slate-900 dark:text-slate-100 font-semibold" />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50">
-                  {courses.map((c) => (
-                    <SelectItem
-                      key={c._id}
-                      value={c._id}
-                      className="text-slate-900 dark:text-slate-100 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100 cursor-pointer"
-                    >
-                      {c.name || c.title || 'Untitled Course'}
-                    </SelectItem>
-                  ))}
+                  {courses.map((course: any) => {
+                    const uniqueId = course._id?.toString() || course.id?.toString();
+                    return (
+                      <SelectItem
+                        key={uniqueId}
+                        value={uniqueId}
+                        className="text-slate-900 dark:text-slate-100 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100 cursor-pointer"
+                      >
+                        {course.name || course.title || 'Untitled Course'}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             )}

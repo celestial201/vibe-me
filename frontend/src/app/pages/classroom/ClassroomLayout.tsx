@@ -8,6 +8,8 @@ import { ArrowLeft, Copy, Check, MessageSquare, BookOpen, Users, Calendar } from
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
+import { NotificationBell } from '@/components/NotificationBell';
+
 import { ClassroomStreamTab } from './tabs/ClassroomStreamTab';
 import { ClassroomPeopleTab } from './tabs/ClassroomPeopleTab';
 import { ClassroomCalendarTab } from './tabs/ClassroomCalendarTab';
@@ -75,6 +77,7 @@ export function ClassroomLayout() {
                 </Button>
               </div>
             )}
+            <NotificationBell classroomId={classroomId} />
           </div>
         </div>
       </header>

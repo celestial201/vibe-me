@@ -131,8 +131,15 @@ export const classroomApi = {
       classroomIds,
     }),
 
-  startCourse: (classroomId: string, courseId: string) =>
-    request<{ success: boolean; courseId: string; versionId: string }>('POST', `${BASE}/${classroomId}/courses/${courseId}/start`),
+  startCourse: (classroomId: string, courseId: string) => {
+    let cleanId = courseId;
+    if (typeof courseId === 'object' && courseId !== null) {
+      cleanId = (courseId as any)._id || (courseId as any).courseId || (courseId as any).$oid || (courseId as any).toString?.() || '';
+    }
+    cleanId = String(cleanId || '').trim();
+    if (cleanId === '[object Object]') cleanId = '';
+    return request<{ success: boolean; courseId: string; versionId: string }>('POST', `${BASE}/${classroomId}/courses/${cleanId}/start`);
+  },
 
   getCourseProgress: (classroomId: string, courseId: string) =>
     request<StudentProgressDTO[]>('GET', `${BASE}/${classroomId}/courses/${courseId}/progress`),
