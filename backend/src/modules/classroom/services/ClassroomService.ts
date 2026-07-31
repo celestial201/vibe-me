@@ -591,12 +591,18 @@ export class ClassroomService {
 
     const versionId = assignment.versionId ? assignment.versionId.toString() : courseId;
 
-    await this.enrollmentService.enrollUser(
-      studentId,
-      courseId,
-      versionId,
-      'STUDENT',
-    );
+    try {
+      await this.enrollmentService.enrollUser(
+        studentId,
+        courseId,
+        versionId,
+        'STUDENT',
+      );
+    } catch (err: any) {
+      if (!err?.message?.includes('already enrolled')) {
+        console.warn('Enrollment note in startClassroomCourse:', err?.message || err);
+      }
+    }
 
     try {
       const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');

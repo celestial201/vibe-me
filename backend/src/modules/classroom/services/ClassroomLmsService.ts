@@ -599,16 +599,24 @@ export class ClassroomLmsService {
     if (!versionId) {
       try {
         const courseRepoCol = await this.db.getCollection<any>('newCourse');
-        const cObjId = ObjectId.isValid(body.courseId) ? new ObjectId(body.courseId) : body.courseId;
-        const courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
-        versionId = courseDoc?.versions?.[0]?._id?.toString() ||
-                    courseDoc?.versions?.[0]?.versionId?.toString() ||
-                    courseDoc?.defaultVersionId?.toString() ||
-                    body.courseId;
-      } catch (_) {
-        versionId = body.courseId;
-      }
+        const cObjId = safeObjectId(body.courseId) || body.courseId;
+        const courseDoc = await courseRepoCol.findOne({
+          $or: [{ _id: cObjId as any }, { _id: body.courseId as any }]
+        });
+
+        const rawVer = courseDoc?.versions?.[0];
+        if (rawVer) {
+          versionId = typeof rawVer === 'object' && rawVer._id ? String(rawVer._id) : String(rawVer);
+        } else {
+          const versionCol = await this.db.getCollection<any>('newCourseVersion');
+          const verDoc = await versionCol.findOne({
+            courseId: { $in: [cObjId, body.courseId] }
+          });
+          if (verDoc?._id) versionId = String(verDoc._id);
+        }
+      } catch (_) {}
     }
+    if (!versionId) versionId = body.courseId;
 
     // 1. Assign course in classroom_courses collection
     try {
@@ -638,8 +646,8 @@ export class ClassroomLmsService {
             course_id: body.courseId,
             version_id: versionId || body.courseId,
             source_classroom_id: classroomId,
-            status: 'active',
-            accepted: true,
+            status: 'invited',
+            accepted: false,
             progress: 0,
             progress_percentage: 0,
             enrolled_at: new Date(),
@@ -651,7 +659,7 @@ export class ClassroomLmsService {
 
     await enrollmentsCol.bulkWrite(bulkOps);
 
-    // 2b. Direct cohort auto-enrollment in primary 'enrollment' collection
+    // 2b. Provision course enrollment requests in primary 'enrollment' collection (pending acceptance)
     try {
       const mainEnrollCol = await this.db.getCollection<any>('enrollment');
       const courseIdStr = typeof body.courseId === 'object'
@@ -675,8 +683,8 @@ export class ClassroomLmsService {
                 courseId: courseObjId,
                 courseVersionId: versionObjId,
                 role: 'STUDENT',
-                status: 'ACTIVE',
-                accepted: true,
+                status: 'PENDING_INVITATION',
+                accepted: false,
                 enrollmentDate: new Date(),
                 isDeleted: false,
                 classroomId: classroomId,
@@ -693,6 +701,71 @@ export class ClassroomLmsService {
 
       if (mainBulkOps.length > 0) {
         await mainEnrollCol.bulkWrite(mainBulkOps);
+      }
+
+      // 2c. Populate Vibe primary 'invites' and 'notifications' collections for main dashboard & bell integration
+      try {
+        const courseIdStr = typeof body.courseId === 'object'
+          ? (body.courseId as any)?._id?.toString() || (body.courseId as any)?.toString()
+          : String(body.courseId || '');
+
+        let pushedCourseTitle = 'Course';
+        try {
+          const courseRepoCol = await this.db.getCollection<any>('newCourse');
+          const cObjId = safeObjectId(courseIdStr) || courseIdStr;
+          const courseDoc = await courseRepoCol.findOne({
+            $or: [{ _id: cObjId as any }, { _id: courseIdStr as any }]
+          });
+          pushedCourseTitle = courseDoc?.name || courseDoc?.title || 'Course';
+        } catch (_) {}
+
+        const invitesCol = await this.db.getCollection<any>('invites');
+        const notificationsCol = await this.db.getCollection<any>('notifications');
+
+        for (const m of members) {
+          const studentIdStr = String(m.studentId);
+          const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+          const userDoc = await this.userRepo.findById(studentIdStr);
+          const studentEmail = userDoc?.email?.toLowerCase()?.trim();
+
+          if (studentEmail) {
+            await invitesCol.updateOne(
+              {
+                email: studentEmail,
+                $or: [{ courseId: courseObjId }, { courseId: courseIdStr }],
+              },
+              {
+                $set: {
+                  email: studentEmail,
+                  courseId: courseObjId,
+                  courseVersionId: versionObjId,
+                  role: 'STUDENT',
+                  inviteStatus: 'PENDING',
+                  type: 'SINGLE',
+                  classroomId: classroomId,
+                  updatedAt: new Date(),
+                },
+                $setOnInsert: {
+                  createdAt: new Date(),
+                  expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+                },
+              },
+              { upsert: true }
+            );
+          }
+
+          await notificationsCol.insertOne({
+            userId: studentObjId,
+            type: 'COURSE_INVITATION',
+            title: 'Course Enrollment Request',
+            message: `Your instructor invited you to enroll in "${pushedCourseTitle}". Open your Courses dashboard to accept your enrollment!`,
+            link: '/student/courses',
+            read: false,
+            createdAt: new Date(),
+          });
+        }
+      } catch (nErr) {
+        console.warn('Failed to populate invites or notifications collections:', nErr);
       }
 
       // Initialize progress collection documents for seamless course player access
@@ -819,6 +892,126 @@ export class ClassroomLmsService {
     return { success: true };
   }
 
+  async acceptCourseEnrollment(classroomId: string, studentId: string, courseId: string) {
+    const studentObjId = safeObjectId(studentId) || studentId;
+    const courseObjId = safeObjectId(courseId) || courseId;
+
+    const classroomCoursesCol = await this.db.getCollection<any>('classroom_courses');
+    const assigned = await classroomCoursesCol.findOne({
+      $or: [
+        { classroomId, courseId: { $in: [courseId, courseObjId] } },
+        { classroom_id: classroomId, course_id: { $in: [courseId, courseObjId] } },
+      ],
+    });
+    const versionId = assigned?.version_id || assigned?.versionId || courseId;
+    const versionObjId = safeObjectId(versionId) || versionId;
+
+    const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+    await enrollmentsCol.updateOne(
+      {
+        $and: [
+          { student_id: { $in: [studentObjId, studentId] } },
+          { $or: [{ classroom_id: classroomId }, { classroomId }] },
+          { $or: [{ course_id: { $in: [courseObjId, courseId] } }, { courseId: { $in: [courseObjId, courseId] } }] },
+        ],
+      },
+      {
+        $set: {
+          student_id: studentObjId,
+          classroom_id: classroomId,
+          course_id: courseObjId,
+          version_id: versionObjId,
+          status: 'active',
+          accepted: true,
+          enrolled_at: new Date(),
+        },
+      },
+      { upsert: true }
+    );
+
+    const mainEnrollCol = await this.db.getCollection<any>('enrollment');
+    await mainEnrollCol.updateOne(
+      {
+        userId: { $in: [studentObjId, studentId] },
+        courseId: { $in: [courseObjId, courseId] },
+      },
+      {
+        $set: {
+          userId: studentObjId,
+          courseId: courseObjId,
+          courseVersionId: versionObjId,
+          role: 'STUDENT',
+          status: 'ACTIVE',
+          accepted: true,
+          enrollmentDate: new Date(),
+          isDeleted: false,
+          classroomId,
+        },
+        $setOnInsert: {
+          percentCompleted: 0,
+          completedItemsCount: 0,
+        },
+      },
+      { upsert: true }
+    );
+
+    try {
+      const invitesCol = await this.db.getCollection<any>('invites');
+      const notificationsCol = await this.db.getCollection<any>('notifications');
+      const userDoc = await this.userRepo.findById(studentId);
+      const studentEmail = userDoc?.email?.toLowerCase()?.trim();
+
+      if (studentEmail) {
+        await invitesCol.updateOne(
+          {
+            email: studentEmail,
+            $or: [{ courseId: courseObjId }, { courseId }],
+          },
+          {
+            $set: { inviteStatus: 'ACCEPTED', acceptedAt: new Date() },
+          }
+        );
+      }
+
+      await notificationsCol.updateMany(
+        {
+          userId: { $in: [studentObjId, studentId] },
+          type: 'COURSE_INVITATION',
+        },
+        {
+          $set: { read: true },
+        }
+      );
+    } catch (_) {}
+
+    try {
+      const progressCol = await this.db.getCollection<any>('progress');
+      await progressCol.updateOne(
+        {
+          userId: { $in: [studentObjId, studentId] },
+          courseId: { $in: [courseObjId, courseId] },
+        },
+        {
+          $set: {
+            userId: studentObjId,
+            courseId: courseObjId,
+            courseVersionId: versionObjId,
+            updatedAt: new Date(),
+          },
+          $setOnInsert: {
+            completedItemIds: [],
+            percentCompleted: 0,
+            createdAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
+    } catch (_) {}
+
+    emitEnrollmentAccepted(classroomId, studentId, courseId);
+    return { success: true, courseId, versionId };
+  }
+
   async getStudentAnalyticsRoster(classroomId: string, requesterId: string): Promise<any[]> {
     const classroom = await this.classroomRepo.findById(classroomId);
     if (!classroom) throw new NotFoundError('Classroom not found');
@@ -929,79 +1122,6 @@ export class ClassroomLmsService {
     }
 
     return roster;
-  }
-
-  async acceptCourseEnrollment(classroomId: string, studentId: string, courseId: string) {
-    const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
-    
-    const studentObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
-    const classroomObjId = ObjectId.isValid(classroomId) ? new ObjectId(classroomId) : classroomId;
-    const courseObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
-    
-    const enrollDoc = await enrollmentsCol.findOne({
-      student_id: { $in: [studentId, studentObjId] },
-      classroom_id: { $in: [classroomId, classroomObjId] },
-      course_id: { $in: [courseId, courseObjId] },
-    });
-
-    if (enrollDoc) {
-      await enrollmentsCol.updateOne(
-        { _id: enrollDoc._id },
-        { $set: { accepted: true, acceptedAt: new Date(), status: 'active', push_status: 'accepted', enrollmentStatus: 'active' } }
-      );
-    }
-
-    let versionId = enrollDoc?.version_id;
-    if (!versionId) {
-      try {
-        const courseRepoCol = await this.db.getCollection<any>('newCourse');
-        const cObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
-        const courseDoc = await courseRepoCol.findOne({ _id: cObjId as any });
-        versionId = courseDoc?.versions?.[0]?._id?.toString() ||
-                    courseDoc?.versions?.[0]?.versionId?.toString() ||
-                    courseDoc?.defaultVersionId?.toString() ||
-                    courseId;
-      } catch (_) {
-        versionId = courseId;
-      }
-    }
-
-    try {
-      const mainEnrollCol = await this.db.getCollection<any>('enrollments');
-      const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
-      const courseObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
-      const versionObjId = ObjectId.isValid(versionId) ? new ObjectId(versionId) : versionId;
-
-      await mainEnrollCol.updateOne(
-        {
-          userId: { $in: [userObjId, studentId] },
-          courseId: { $in: [courseObjId, courseId] },
-        },
-        {
-          $set: {
-            userId: userObjId,
-            courseId: courseObjId,
-            courseVersionId: versionObjId,
-            role: 'STUDENT',
-            status: 'active',
-            accepted: true,
-            enrollmentDate: new Date(),
-            isDeleted: false,
-            classroomId: classroomId, // Save classroom origin for the UI
-          },
-          $setOnInsert: {
-            percentCompleted: 0,
-            completedItemsCount: 0,
-          },
-        },
-        { upsert: true }
-      );
-    } catch (e) {
-      console.error('Failed to create main enrollment on classroom course acceptance:', e);
-    }
-
-    emitEnrollmentAccepted(classroomId, studentId, courseId);
-    return { success: true };
   }
 
   async getStudentEnrollmentStatus(classroomId: string, studentId: string) {

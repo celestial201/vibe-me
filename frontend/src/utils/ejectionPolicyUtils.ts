@@ -3,10 +3,23 @@ import { queryClient } from "@/lib/client";
 import { fetchClient } from "@/lib/openapi";
 
 export async function hasActivePolicies(
-  courseId: string,
-  courseVersionId: string,
-  cohortId: string
+  courseId?: string,
+  courseVersionId?: string,
+  cohortId?: string
 ): Promise<boolean> {
+  if (
+    !courseId ||
+    !courseVersionId ||
+    !cohortId ||
+    courseId.includes('{') ||
+    courseVersionId.includes('{') ||
+    cohortId.includes('{') ||
+    courseId === 'undefined' ||
+    courseVersionId === 'undefined' ||
+    cohortId === 'undefined'
+  ) {
+    return false;
+  }
   try {
     const data: any = await queryClient.fetchQuery({
       queryKey: [

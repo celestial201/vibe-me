@@ -291,8 +291,9 @@ useEffect(() => {
              {/* ── Invites ── */}
              {invitesToShow.map((invite, idx) => (
                 <InviteItem
-  invite={invite}
-  hasPolicies={invitePoliciesMap[invite.inviteId]}
+                  key={invite.inviteId || invite._id || `invite-${idx}`}
+                  invite={invite}
+                  hasPolicies={invitePoliciesMap[invite.inviteId || invite._id]}
   onAcceptClick={async (invite) => {
     const hasPolicies = await hasActivePolicies(
       invite.courseId,
