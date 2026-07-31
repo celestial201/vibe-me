@@ -65,6 +65,18 @@ export class EnrollmentRepository {
     @inject(GLOBAL_TYPES.Database) private db: MongoDatabase,
   ) { }
 
+  private getIdVariants(
+    id?: string | ObjectId | null | undefined,
+  ): (string | ObjectId)[] {
+    if (!id) return [];
+    if (id instanceof ObjectId) return [id, id.toString()];
+    const variants: (string | ObjectId)[] = [id];
+    if (typeof id === 'string' && ObjectId.isValid(id)) {
+      variants.unshift(new ObjectId(id));
+    }
+    return variants;
+  }
+
   private async init() {
     this.enrollmentCollection =
       await this.db.getCollection<IEnrollment>('enrollment');
@@ -121,12 +133,10 @@ export class EnrollmentRepository {
 
     return await this.enrollmentCollection.findOne(
       {
-        userId: { $in: [userId, new ObjectId(userId)] },
-        courseId: { $in: [courseId, new ObjectId(courseId)] },
-        courseVersionId: {
-          $in: [courseVersionId, new ObjectId(courseVersionId)],
-        },
-        ...(cohortId ? { cohortId: new ObjectId(cohortId) } : {}),
+        userId: { $in: this.getIdVariants(userId) },
+        courseId: { $in: this.getIdVariants(courseId) },
+        courseVersionId: { $in: this.getIdVariants(courseVersionId) },
+        ...(cohortId ? { cohortId: { $in: this.getIdVariants(cohortId) } } : {}),
         isDeleted: { $ne: true },
       },
       { session },
@@ -144,11 +154,9 @@ export class EnrollmentRepository {
     return await this.enrollmentCollection
       .find(
         {
-          userId: { $in: [userId, new ObjectId(userId)] },
-          courseId: { $in: [courseId, new ObjectId(courseId)] },
-          courseVersionId: {
-            $in: [courseVersionId, new ObjectId(courseVersionId)],
-          },
+          userId: { $in: this.getIdVariants(userId) },
+          courseId: { $in: this.getIdVariants(courseId) },
+          courseVersionId: { $in: this.getIdVariants(courseVersionId) },
           role: 'STUDENT',
           isDeleted: { $ne: true },
         },
@@ -168,11 +176,9 @@ export class EnrollmentRepository {
     return await this.enrollmentCollection
       .find(
         {
-          userId: { $in: [userId, new ObjectId(userId)] },
-          courseId: { $in: [courseId, new ObjectId(courseId)] },
-          courseVersionId: {
-            $in: [courseVersionId, new ObjectId(courseVersionId)],
-          },
+          userId: { $in: this.getIdVariants(userId) },
+          courseId: { $in: this.getIdVariants(courseId) },
+          courseVersionId: { $in: this.getIdVariants(courseVersionId) },
           status: 'ACTIVE',
           isDeleted: { $ne: true },
         },
@@ -200,12 +206,10 @@ export class EnrollmentRepository {
 
     return await this.enrollmentCollection.findOne(
       {
-        userId: { $in: [userId, new ObjectId(userId)] },
-        courseId: { $in: [courseId, new ObjectId(courseId)] },
-        courseVersionId: {
-          $in: [courseVersionId, new ObjectId(courseVersionId)],
-        },
-        ...(cohortId ? { cohortId: new ObjectId(cohortId) } : {}),
+        userId: { $in: this.getIdVariants(userId) },
+        courseId: { $in: this.getIdVariants(courseId) },
+        courseVersionId: { $in: this.getIdVariants(courseVersionId) },
+        ...(cohortId ? { cohortId: { $in: this.getIdVariants(cohortId) } } : {}),
       },
       { session },
     );
@@ -220,19 +224,15 @@ export class EnrollmentRepository {
   ): Promise<IEnrollment | null> {
     await this.init();
 
-    const courseObjectId = new ObjectId(courseId);
-    const courseVersionObjectId = new ObjectId(courseVersionId);
-    const userObjectid = new ObjectId(userId);
-
     return await this.enrollmentCollection.findOne(
       {
-        userId: { $in: [userObjectid, userId] },
-        courseId: { $in: [courseObjectId, courseId] },
-        courseVersionId: { $in: [courseVersionObjectId, courseVersionId] },
+        userId: { $in: this.getIdVariants(userId) },
+        courseId: { $in: this.getIdVariants(courseId) },
+        courseVersionId: { $in: this.getIdVariants(courseVersionId) },
         status: 'ACTIVE',
         isDeleted: { $ne: true },
         isEjected: { $ne: true },
-        ...(cohortId ? { cohortId: new ObjectId(cohortId) } : {}),
+        ...(cohortId ? { cohortId: { $in: this.getIdVariants(cohortId) } } : {}),
       },
       { session },
     );
@@ -248,8 +248,8 @@ export class EnrollmentRepository {
     const enrollments = await this.enrollmentCollection
       .find(
         {
-          courseId: { $in: [new ObjectId(courseId), courseId] },
-          courseVersionId: { $in: [new ObjectId(versionId), versionId] },
+          courseId: { $in: this.getIdVariants(courseId) },
+          courseVersionId: { $in: this.getIdVariants(versionId) },
           role: 'INSTRUCTOR',
           status: 'ACTIVE',
         },
@@ -517,9 +517,9 @@ export class EnrollmentRepository {
     await this.init();
     await this.progressCollection.updateMany(
       {
-        userId: new ObjectId(userId),
-        courseId: new ObjectId(courseId),
-        courseVersionId: new ObjectId(courseVersionId),
+        userId: { $in: this.getIdVariants(userId) },
+        courseId: { $in: this.getIdVariants(courseId) },
+        courseVersionId: { $in: this.getIdVariants(courseVersionId) },
       },
       { $set: { isDeleted: true, deletedAt: new Date() } },
       { session },
@@ -536,12 +536,12 @@ export class EnrollmentRepository {
   ) {
     try {
       await this.init();
-      const userObjectId = new ObjectId(userId);
+      const userVariants = this.getIdVariants(userId);
 
       const aggregationPipeline: any[] = [
         {
           $match: {
-            userId: { $in: [userObjectId, userId] },
+            userId: { $in: userVariants },
             role,
             isDeleted: { $ne: true },
             status: 'ACTIVE',
@@ -727,11 +727,11 @@ export class EnrollmentRepository {
     search: string,
   ) {
     await this.init();
-    const userObjectId = new ObjectId(userId);
+    const userVariants = this.getIdVariants(userId);
     const pipeline: any[] = [
       {
         $match: {
-          userId: { $in: [userObjectId, userId] },
+          userId: { $in: userVariants },
           role,
           isDeleted: { $ne: true },
           status: { $regex: /^active$/i },
@@ -1022,11 +1022,13 @@ export class EnrollmentRepository {
   ) {
     await this.init();
 
+    const userVariants = this.getIdVariants(userId);
+
     const pipeline: any[] = [
       /* ---------- EARLY FILTER (INDEXED) ---------- */
       {
         $match: {
-          userId: { $in: [new ObjectId(userId), userId] },
+          userId: { $in: userVariants },
           role,
           isDeleted: { $ne: true },
           status: { $regex: /^active$/i },
@@ -1610,8 +1612,8 @@ export class EnrollmentRepository {
     await this.init();
 
     const baseMatch: any = {
-      courseId: { $in: [courseId, new ObjectId(courseId)] },
-      courseVersionId: { $in: [courseVersionId, new ObjectId(courseVersionId)] },
+      courseId: { $in: this.getIdVariants(courseId) },
+      courseVersionId: { $in: this.getIdVariants(courseVersionId) },
     };
 
     // if (cohort) {
@@ -2197,7 +2199,7 @@ export class EnrollmentRepository {
   ) {
     await this.init();
     const matchStage: any = {
-      userId: { $in: [new ObjectId(userId), userId] },
+      userId: { $in: this.getIdVariants(userId) },
       role,
       isDeleted: { $ne: true },
       status: { $regex: /^active$/i },
@@ -2205,7 +2207,7 @@ export class EnrollmentRepository {
 
     // Add courseVersionId filter if provided
     if (courseVersionId) {
-      matchStage.courseVersionId = new ObjectId(courseVersionId);
+      matchStage.courseVersionId = { $in: this.getIdVariants(courseVersionId) };
     }
 
     const pipeline: any[] = [
@@ -2297,7 +2299,7 @@ export class EnrollmentRepository {
     await this.init();
 
     const matchStage: any = {
-      userId: { $in: [new ObjectId(userId), userId] },
+      userId: { $in: this.getIdVariants(userId) },
       role,
       isDeleted: { $ne: true },
       status: { $regex: /^active$/i },
@@ -2349,7 +2351,7 @@ export class EnrollmentRepository {
     await this.init();
 
     const matchStage: any = {
-      userId: { $in: [new ObjectId(userId), userId] },
+      userId: { $in: this.getIdVariants(userId) },
       role,
       isDeleted: { $ne: true },
       status: { $regex: /^active$/i },
@@ -2426,12 +2428,12 @@ export class EnrollmentRepository {
       percentCompleted: { $exists: true, $gte: 99, $lt: 100 },
     };
 
-    if (filters.courseId) query.courseId = new ObjectId(filters.courseId);
+    if (filters.courseId) query.courseId = { $in: this.getIdVariants(filters.courseId) };
 
     if (filters.courseVersionId)
-      query.courseVersionId = new ObjectId(filters.courseVersionId);
+      query.courseVersionId = { $in: this.getIdVariants(filters.courseVersionId) };
 
-    if (filters.userId) query.userId = new ObjectId(filters.userId);
+    if (filters.userId) query.userId = { $in: this.getIdVariants(filters.userId) };
 
     return this.enrollmentCollection.find(query).toArray();
   }
@@ -2475,8 +2477,8 @@ export class EnrollmentRepository {
     return this.enrollmentCollection
       .find(
         {
-          courseId: new ObjectId(courseId),
-          courseVersionId: new ObjectId(courseVersionId),
+          courseId: { $in: this.getIdVariants(courseId) },
+          courseVersionId: { $in: this.getIdVariants(courseVersionId) },
         },
         { session },
       )
@@ -2608,7 +2610,7 @@ export class EnrollmentRepository {
     let updatedCount = 0;
 
     const courseVersion = await this.courseVersionCollection.findOne(
-      { _id: new ObjectId(filters.courseVersionId) },
+      { _id: { $in: this.getIdVariants(filters.courseVersionId) } as any },
       { projection: { totalItems: 1 }, session },
     );
     const totalItems = courseVersion?.totalItems ?? 0;
@@ -2618,15 +2620,15 @@ export class EnrollmentRepository {
 
     const match: any = {
       isDeleted: { $ne: true },
-      courseVersionId: new ObjectId(filters.courseVersionId),
+      courseVersionId: { $in: this.getIdVariants(filters.courseVersionId) },
     };
 
     if (filters.courseId) {
-      match.courseId = new ObjectId(filters.courseId);
+      match.courseId = { $in: this.getIdVariants(filters.courseId) };
     }
 
     if (filters.userId) {
-      match.userId = new ObjectId(filters.userId);
+      match.userId = { $in: this.getIdVariants(filters.userId) };
     }
 
     const cursor = this.enrollmentCollection

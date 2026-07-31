@@ -110,8 +110,11 @@ export class UserRepository implements IUserRepository {
     session?: ClientSession,
   ): Promise<IUser | null> {
     await this.init();
+    const query = id instanceof ObjectId
+      ? { _id: id }
+      : { _id: { $in: typeof id === 'string' && ObjectId.isValid(id) ? [new ObjectId(id), id] : [id] } };
     const user = await this.usersCollection.findOne(
-      {_id: new ObjectId(id)},
+      query as any,
       {session},
     );
     return instanceToPlain(new User(user)) as IUser;
@@ -124,9 +127,12 @@ export class UserRepository implements IUserRepository {
 
   async getUserNamesByIds(userIds: string[], session?: ClientSession) {
     await this.init();
+    const idVariants = userIds.flatMap(id =>
+      typeof id === 'string' && ObjectId.isValid(id) ? [new ObjectId(id), id] : [id]
+    );
     const users = await this.usersCollection
       .find(
-        {_id: {$in: userIds.map(id => new ObjectId(id))}},
+        {_id: {$in: idVariants as any}},
         {projection: {firstName: 1, profileImage: 1, firebaseUID: 1}, session},
       )
       .toArray();
@@ -171,8 +177,9 @@ export class UserRepository implements IUserRepository {
    */
   async makeAdmin(userId: string, session?: ClientSession): Promise<void> {
     await this.init();
+    const queryId = typeof userId === 'string' && ObjectId.isValid(userId) ? new ObjectId(userId) : userId;
     await this.usersCollection.updateOne(
-      {_id: new ObjectId(userId)},
+      {_id: queryId as any},
       {$set: {roles: 'admin'}},
       {session},
     );
@@ -200,8 +207,9 @@ export class UserRepository implements IUserRepository {
     session?: ClientSession,
   ): Promise<void> {
     await this.init();
+    const queryId = typeof userId === 'string' && ObjectId.isValid(userId) ? new ObjectId(userId) : userId;
     await this.usersCollection.updateOne(
-      {_id: new ObjectId(userId)},
+      {_id: queryId as any},
       {$set: userData},
       {session},
     );
@@ -209,9 +217,11 @@ export class UserRepository implements IUserRepository {
 
   async getUsersByIds(ids: string[]): Promise<IUser[]> {
     await this.init();
-    const objectIds = ids.map(id => new ObjectId(id));
+    const idVariants = ids.flatMap(id =>
+      typeof id === 'string' && ObjectId.isValid(id) ? [new ObjectId(id), id] : [id]
+    );
     const users = await this.usersCollection
-      .find({_id: {$in: objectIds}})
+      .find({_id: {$in: idVariants as any}})
       .toArray();
     return users.map(user => ({
       ...user,

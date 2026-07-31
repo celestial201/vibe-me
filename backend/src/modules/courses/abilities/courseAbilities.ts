@@ -34,9 +34,7 @@ export function setupCourseAbilities(
         return;
     }
 
-    if (user.userId) {
-        can(CourseActions.Create, 'Course');
-    }
+    can(CourseActions.Create, 'Course');
 
     user.enrollments.forEach((enrollment: AuthenticatedUserEnrollements) => {
         const courseBounded = { courseId: enrollment.courseId };

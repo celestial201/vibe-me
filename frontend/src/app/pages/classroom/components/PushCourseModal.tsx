@@ -12,6 +12,21 @@ interface Props {
   onClose: () => void;
 }
 
+const getCourseId = (course: any, index: number): string => {
+  if (!course) return `course-${index}`;
+  const idVal = course._id ?? course.id ?? course.courseId;
+  if (typeof idVal === 'string' && idVal !== '[object Object]') return idVal;
+  if (idVal && typeof idVal === 'object') {
+    if (typeof idVal.toString === 'function') {
+      const str = idVal.toString();
+      if (str !== '[object Object]') return str;
+    }
+    if (idVal._id) return String(idVal._id);
+    if (idVal.$oid) return String(idVal.$oid);
+  }
+  return `course-${index}`;
+};
+
 export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
   const { data: courses, isLoading } = useGetMyVibeCourses();
   const pushMutation = usePushCourseToClassroom(classroomId);
@@ -60,15 +75,16 @@ export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
                   <SelectValue placeholder="Choose a course to push..." className="text-slate-900 dark:text-slate-100 font-semibold" />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50">
-                  {courses.map((course: any) => {
-                    const uniqueId = course._id?.toString() || course.id?.toString();
+                  {courses.map((course: any, idx: number) => {
+                    const uniqueId = getCourseId(course, idx);
+                    const courseName = typeof course.name === 'string' ? course.name : (typeof course.title === 'string' ? course.title : 'Untitled Course');
                     return (
                       <SelectItem
                         key={uniqueId}
                         value={uniqueId}
                         className="text-slate-900 dark:text-slate-100 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100 cursor-pointer"
                       >
-                        {course.name || course.title || 'Untitled Course'}
+                        {courseName}
                       </SelectItem>
                     );
                   })}
