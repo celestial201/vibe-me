@@ -141,6 +141,10 @@ export class PushCourseToClassroomsBody {
   @IsOptional()
   @IsString()
   message?: string;
+
+  @IsOptional()
+  @IsString()
+  teacherNote?: string;
 }
 
 export class StudentAnalyticsRosterDTO {

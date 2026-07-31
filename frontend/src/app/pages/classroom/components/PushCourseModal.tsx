@@ -35,6 +35,15 @@ const getCourseId = (course: any): string => {
   return '';
 };
 
+const getCourseName = (course: any): string => {
+  if (!course) return 'Untitled Course';
+  if (typeof course.name === 'string' && course.name.trim()) return course.name;
+  if (typeof course.title === 'string' && course.title.trim()) return course.title;
+  if (typeof course.courseName === 'string' && course.courseName.trim()) return course.courseName;
+  if (typeof course.courseTitle === 'string' && course.courseTitle.trim()) return course.courseTitle;
+  return 'Untitled Course';
+};
+
 export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
   const { data: courses, isLoading } = useGetMyVibeCourses();
   const pushMutation = usePushCourseToClassroom(classroomId);
@@ -78,30 +87,22 @@ export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
                 No published Vibe courses found in your account.
               </p>
             ) : (
-              <select
-                value={selectedCourseId}
-                onChange={(e) => setSelectedCourseId(e.target.value)}
-                className="w-full h-10 px-3 py-2 text-sm font-semibold text-foreground bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer shadow-sm"
-              >
-                <option value="" disabled className="text-muted-foreground">
-                  Choose a course to push...
-                </option>
-                {courses.map((course: any) => {
-                  const uniqueId = getCourseId(course);
-                  if (!uniqueId) return null;
-                  const courseName =
-                    typeof course.name === 'string'
-                      ? course.name
-                      : typeof course.title === 'string'
-                      ? course.title
-                      : 'Untitled Course';
-                  return (
-                    <option key={uniqueId} value={uniqueId} className="bg-background text-foreground py-1">
-                      {courseName}
-                    </option>
-                  );
-                })}
-              </select>
+              <Select value={selectedCourseId} onValueChange={(val) => setSelectedCourseId(val)}>
+                <SelectTrigger className="w-full h-10 rounded-xl font-semibold cursor-pointer">
+                  <SelectValue placeholder="Choose a course to push..." />
+                </SelectTrigger>
+                <SelectContent className="z-[9999] bg-popover text-popover-foreground border border-border shadow-xl max-h-60 overflow-y-auto">
+                  {courses.map((course: any, idx: number) => {
+                    const uniqueId = getCourseId(course) || `course-${idx}`;
+                    const courseName = getCourseName(course);
+                    return (
+                      <SelectItem key={uniqueId} value={uniqueId} className="cursor-pointer font-medium">
+                        {courseName}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             )}
           </div>
 

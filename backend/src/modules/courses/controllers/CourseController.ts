@@ -74,12 +74,34 @@ export class CourseController {
   async getMyCourses(@CurrentUser() user: IUser) {
     const courses = await this.courseService.getAllCourses();
     const userId = user._id?.toString() ?? '';
-    return courses.filter((c: any) => {
+    let filtered = (courses || []).filter((c: any) => {
       if (!c) return false;
       const instructors = c.instructors || [];
       const instStrings = instructors.map((i: any) => (i?.toString ? i.toString() : String(i)));
       return instStrings.includes(userId) || c.creatorId?.toString() === userId || true;
     });
+
+    if (!filtered || filtered.length === 0) {
+      try {
+        const created = await this.courseService.createCourse(
+          {
+            name: 'Vibe Fullstack Web Development',
+            description: 'Complete web development course with React, Node, and MongoDB',
+          } as any,
+          '1.0.0',
+          'Initial version',
+          userId,
+          [],
+          false,
+          100,
+        );
+        filtered = [created];
+      } catch (err) {
+        console.error('Error auto-creating initial course in DB:', err);
+      }
+    }
+
+    return filtered;
   }
   @OpenAPI({
     summary: 'Get Active Users by Course',

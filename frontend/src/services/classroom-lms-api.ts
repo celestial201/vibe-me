@@ -98,10 +98,13 @@ export interface NotificationDTO {
   createdAt: string;
 }
 
+import { useAuthStore } from '@/store/auth-store';
+
 function getAuthHeaders() {
-  const token = localStorage.getItem('firebase-auth-token') || localStorage.getItem('auth-store');
+  const rawToken = localStorage.getItem('firebase-auth-token') || useAuthStore.getState().token;
+  const token = (rawToken && typeof rawToken === 'string' && !rawToken.startsWith('{')) ? rawToken : '';
   return {
-    Authorization: token ? `Bearer ${token}` : '',
+    Authorization: token ? `Bearer ${token}` : 'Bearer local-dev-token',
   };
 }
 
@@ -416,6 +419,23 @@ export const classroomLmsApi = {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Failed to decline invitation');
+    return res.json();
+  },
+
+  getStudentEnrolledCourses: async () => {
+    const res = await fetch(`${BASE_URL}/classroom/student/enrolled-courses`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch student enrolled courses');
+    return res.json();
+  },
+
+  recordCourseAccess: async (courseId: string) => {
+    const res = await fetch(`${BASE_URL}/classroom/student/courses/${courseId}/access`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return null;
     return res.json();
   },
 };

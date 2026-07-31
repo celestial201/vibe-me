@@ -26,14 +26,23 @@ export function PendingInvitationsBanner() {
 
   const acceptMutation = useMutation({
     mutationFn: (invitationId: string) => classroomLmsApi.acceptStudentInvitation(invitationId),
-    onSuccess: (data) => {
-      toast.success(data.message || 'Successfully enrolled in course!', {
+    onSuccess: (data, variables) => {
+      const targetInv = invitations.find((i) => i.invitationId === variables);
+      const courseTitle = targetInv?.courseTitle || 'course';
+      toast.success(`Successfully enrolled in ${courseTitle}!`, {
         description: 'You can now access all learning modules and lessons.',
       });
       queryClient.invalidateQueries({ queryKey: ['pendingCourseInvitations'] });
       queryClient.invalidateQueries({ queryKey: ['user-enrollments'] });
       queryClient.invalidateQueries({ queryKey: ['enrolled-courses'] });
       queryClient.invalidateQueries({ queryKey: ['user-progress'] });
+
+      const targetCourseId = data?.courseId || targetInv?.courseId;
+      if (targetCourseId) {
+        setTimeout(() => {
+          navigate({ to: `/student/learn?courseId=${targetCourseId}` as any });
+        }, 1200);
+      }
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to accept course invitation.');

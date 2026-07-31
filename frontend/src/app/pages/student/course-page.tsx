@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useCourseVersionById, useUserProgress, useItemsBySectionId, useItemById, useGetProcotoringSettings, useSubmitFlag, enqueueNavigation, useSkipOptionalItem, useRecalculateStudentProgress, useInvites, useAcceptInvite } from "@/hooks/hooks";
 import { useAuthStore } from "@/store/auth-store";
 import { useCourseStore } from "@/store/course-store";
-import { Link, Navigate, useRouter } from "@tanstack/react-router";
+import { Link, Navigate, useRouter, useNavigate } from "@tanstack/react-router";
 import StudentProjectItem from "./components/StudentProjectItem";
 import { enterFullscreen, exitFullscreen } from "@/utils/fullscreen";
 const LazyStudentTimeslotModal = lazy(() => import("@/components/course/StudentTimeslotModal"));
@@ -79,6 +79,7 @@ export default function CoursePage() {
   const [showProctorDialog, setShowProctorDialog] = useState(true);
   const { user } = useAuthStore();
   const router = useRouter();
+  const navigate = useNavigate();
   const currentCourse = useCourseStore((state) => state.currentCourse);
   const clearCurrentCourse = useCourseStore((state) => state.clearCurrentCourse);
   const COURSE_ID = currentCourse?.courseId || "";
