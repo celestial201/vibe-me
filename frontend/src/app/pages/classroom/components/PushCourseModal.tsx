@@ -78,27 +78,30 @@ export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
                 No published Vibe courses found in your account.
               </p>
             ) : (
-              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                <SelectTrigger className="w-full h-10 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500">
-                  <SelectValue placeholder="Choose a course to push..." className="text-slate-900 dark:text-slate-100 font-semibold" />
-                </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50">
-                  {courses.map((course: any, idx: number) => {
-                    const uniqueId = getCourseId(course);
-                    if (!uniqueId) return null;
-                    const courseName = typeof course.name === 'string' ? course.name : (typeof course.title === 'string' ? course.title : 'Untitled Course');
-                    return (
-                      <SelectItem
-                        key={uniqueId}
-                        value={uniqueId}
-                        className="text-slate-900 dark:text-slate-100 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100 cursor-pointer"
-                      >
-                        {courseName}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
+              <select
+                value={selectedCourseId}
+                onChange={(e) => setSelectedCourseId(e.target.value)}
+                className="w-full h-10 px-3 py-2 text-sm font-semibold text-foreground bg-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer shadow-sm"
+              >
+                <option value="" disabled className="text-muted-foreground">
+                  Choose a course to push...
+                </option>
+                {courses.map((course: any) => {
+                  const uniqueId = getCourseId(course);
+                  if (!uniqueId) return null;
+                  const courseName =
+                    typeof course.name === 'string'
+                      ? course.name
+                      : typeof course.title === 'string'
+                      ? course.title
+                      : 'Untitled Course';
+                  return (
+                    <option key={uniqueId} value={uniqueId} className="bg-background text-foreground py-1">
+                      {courseName}
+                    </option>
+                  );
+                })}
+              </select>
             )}
           </div>
 
