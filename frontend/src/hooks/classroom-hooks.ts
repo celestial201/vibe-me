@@ -55,7 +55,7 @@ export function useCreateClassroom() {
 
 export function useUpdateClassroom(id: string) {
   const qc = useQueryClient();
-  return useMutation<ClassroomDTO, Error, { title?: string; description?: string }>({
+  return useMutation<ClassroomDTO, Error, { title?: string; description?: string; streamPostingPermission?: 'everyone' | 'teacher_only' }>({
     mutationFn: (body) => classroomApi.updateClassroom(id, body),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: CK.myClassrooms });
@@ -63,6 +63,19 @@ export function useUpdateClassroom(id: string) {
       toast.success('Classroom updated!');
     },
     onError: (e) => toast.error(e.message ?? 'Failed to update classroom'),
+  });
+}
+
+export function useResetJoinCode(id: string) {
+  const qc = useQueryClient();
+  return useMutation<ClassroomDTO, Error, void>({
+    mutationFn: () => classroomApi.resetJoinCode(id),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: CK.myClassrooms });
+      qc.setQueryData(CK.classroom(id), data);
+      toast.success('Classroom join code regenerated!');
+    },
+    onError: (e) => toast.error(e.message ?? 'Failed to reset join code'),
   });
 }
 

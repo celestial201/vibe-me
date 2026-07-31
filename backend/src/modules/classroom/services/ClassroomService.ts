@@ -111,10 +111,26 @@ export class ClassroomService {
     const updateData: Partial<IClassroom> = {
       ...(body.title !== undefined ? { title: body.title } : {}),
       ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.streamPostingPermission !== undefined ? { streamPostingPermission: body.streamPostingPermission } : {}),
       ...(body.start_date !== undefined ? { start_date: new Date(body.start_date) } : {}),
       ...(body.end_date !== undefined ? { end_date: new Date(body.end_date) } : {}),
     };
     const updated = await this.repo.update(id, updateData);
+    if (!updated) throw new NotFoundError('Classroom not found');
+    return this._toClassroomResponse(updated);
+  }
+
+  async resetJoinCode(id: string, instructorId: string): Promise<ClassroomResponse> {
+    await this._requireOwner(id, instructorId);
+    let code: string;
+    let attempts = 0;
+    do {
+      code = generateCode();
+      attempts++;
+      if (attempts > 5) throw new BadRequestError('Failed to generate unique code. Please try again.');
+    } while (await this.repo.codeExists(code));
+
+    const updated = await this.repo.update(id, { code, updatedAt: new Date() });
     if (!updated) throw new NotFoundError('Classroom not found');
     return this._toClassroomResponse(updated);
   }
@@ -618,6 +634,7 @@ export class ClassroomService {
     code: c.code,
     instructorId: c.instructorId?.toString() ?? '',
     status: c.status,
+    streamPostingPermission: c.streamPostingPermission || 'everyone',
     start_date: c.start_date,
     end_date: c.end_date,
     createdAt: c.createdAt,

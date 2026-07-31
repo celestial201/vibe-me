@@ -192,22 +192,23 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant={s.courseAccepted === 'accepted' ? 'default' : 'secondary'}
-                            className={
-                              s.courseAccepted === 'accepted'
-                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white text-[10px]'
-                                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]'
-                            }
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px]"
                           >
-                            {s.courseAccepted === 'accepted' ? 'Accepted' : 'Pending Invitation'}
+                            Active Cohort Student
                           </Badge>
                         </TableCell>
-                        <TableCell className="min-w-[130px]">
+                        <TableCell className="min-w-[150px]">
                           <div className="space-y-1">
-                            <div className="flex justify-between text-[10px] font-semibold text-muted-foreground">
-                              <span>{s.courseProgress}%</span>
+                            <div className="flex justify-between items-center text-[10px] font-semibold text-muted-foreground">
+                              <span>{Math.round(s.courseProgress || 0)}%</span>
+                              {s.courseProgress >= 100 && (
+                                <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 flex items-center gap-0.5">
+                                  <CheckCircle className="w-2.5 h-2.5" />
+                                  Completed ■
+                                </Badge>
+                              )}
                             </div>
-                            <Progress value={s.courseProgress} className="h-1.5 w-full bg-muted" />
+                            <Progress value={s.courseProgress || 0} className="h-1.5 w-full bg-muted" />
                           </div>
                         </TableCell>
                         <TableCell>

@@ -40,6 +40,7 @@ export interface ClassroomDTO {
   code: string;
   instructorId: string;
   status: 'active' | 'archived';
+  streamPostingPermission?: 'everyone' | 'teacher_only';
   start_date?: string;
   end_date?: string;
   createdAt: string;
@@ -97,8 +98,11 @@ export const classroomApi = {
   getClassroom: (id: string) =>
     request<ClassroomDTO>('GET', `${BASE}/${id}`),
 
-  updateClassroom: (id: string, body: { title?: string; description?: string; start_date?: string; end_date?: string }) =>
+  updateClassroom: (id: string, body: { title?: string; description?: string; streamPostingPermission?: 'everyone' | 'teacher_only'; start_date?: string; end_date?: string }) =>
     request<ClassroomDTO>('PUT', `${BASE}/${id}`, body),
+
+  resetJoinCode: (id: string) =>
+    request<ClassroomDTO>('POST', `${BASE}/${id}/reset-code`),
 
   deleteClassroom: (id: string) =>
     request<void>('DELETE', `${BASE}/${id}`),

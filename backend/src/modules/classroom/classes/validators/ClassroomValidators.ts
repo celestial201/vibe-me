@@ -37,6 +37,10 @@ export class UpdateClassroomBody {
   description?: string;
 
   @IsOptional()
+  @IsString()
+  streamPostingPermission?: 'everyone' | 'teacher_only';
+
+  @IsOptional()
   @IsDateString()
   start_date?: string;
 
@@ -74,6 +78,7 @@ export class ClassroomResponse {
   @Expose() code: string;
   @Expose() instructorId: string;
   @Expose() status: string;
+  @Expose() streamPostingPermission?: 'everyone' | 'teacher_only';
   @Expose() @Type(() => Date) start_date?: Date;
   @Expose() @Type(() => Date) end_date?: Date;
   @Expose() @Type(() => Date) createdAt: Date;

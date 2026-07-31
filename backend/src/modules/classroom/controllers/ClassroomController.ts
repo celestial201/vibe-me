@@ -94,6 +94,15 @@ export class ClassroomController {
     return this.classroomService.updateClassroom(params.id, user._id?.toString() ?? '', body);
   }
 
+  @OpenAPI({ summary: 'Regenerate classroom 6-character join code (Teacher)' })
+  @Post('/:id/reset-code')
+  async resetCode(
+    @Params() params: ClassroomIdParams,
+    @CurrentUser() user: IUser,
+  ): Promise<ClassroomResponse> {
+    return this.classroomService.resetJoinCode(params.id, user._id?.toString() ?? '');
+  }
+
   @OpenAPI({ summary: 'Delete a classroom (cascades members and courses)' })
   @Delete('/:id')
   @HttpCode(204)

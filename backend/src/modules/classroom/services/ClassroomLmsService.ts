@@ -1,6 +1,7 @@
 import { inject, injectable } from 'inversify';
 import { BadRequestError, ForbiddenError, NotFoundError } from 'routing-controllers';
 import { ObjectId } from 'mongodb';
+import { safeObjectId } from '#root/shared/functions/idNormalizer.js';
 import { CLASSROOM_TYPES } from '../types.js';
 import { ClassroomRepository } from '../repositories/providers/mongodb/ClassroomRepository.js';
 import { AnnouncementRepository } from '../repositories/providers/mongodb/AnnouncementRepository.js';
@@ -637,8 +638,8 @@ export class ClassroomLmsService {
             course_id: body.courseId,
             version_id: versionId || body.courseId,
             source_classroom_id: classroomId,
-            status: 'pending_acceptance',
-            accepted: false,
+            status: 'active',
+            accepted: true,
             progress: 0,
             progress_percentage: 0,
             enrolled_at: new Date(),
@@ -650,7 +651,54 @@ export class ClassroomLmsService {
 
     await enrollmentsCol.bulkWrite(bulkOps);
 
-    // 3. Auto-create stream announcement for course invitation
+    // 2b. Direct cohort auto-enrollment in primary 'enrollment' collection
+    try {
+      const mainEnrollCol = await this.db.getCollection<any>('enrollment');
+      const courseIdStr = typeof body.courseId === 'object'
+        ? (body.courseId as any)?._id?.toString() || (body.courseId as any)?.toString()
+        : String(body.courseId || '');
+      const courseObjId = safeObjectId(courseIdStr) || courseIdStr;
+      const versionObjId = safeObjectId(versionId || courseIdStr) || (versionId || courseIdStr);
+
+      const mainBulkOps = members.map((m) => {
+        const studentIdStr = String(m.studentId);
+        const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+        return {
+          updateOne: {
+            filter: {
+              userId: { $in: [studentObjId, studentIdStr] },
+              courseId: { $in: [courseObjId, courseIdStr] },
+            },
+            update: {
+              $set: {
+                userId: studentObjId,
+                courseId: courseObjId,
+                courseVersionId: versionObjId,
+                role: 'STUDENT',
+                status: 'active',
+                accepted: true,
+                enrollmentDate: new Date(),
+                isDeleted: false,
+                classroomId: classroomId,
+              },
+              $setOnInsert: {
+                percentCompleted: 0,
+                completedItemsCount: 0,
+              },
+            },
+            upsert: true,
+          },
+        };
+      });
+
+      if (mainBulkOps.length > 0) {
+        await mainEnrollCol.bulkWrite(mainBulkOps);
+      }
+    } catch (e) {
+      console.error('Failed to perform primary cohort bulk enrollment:', e);
+    }
+
+    // 3. Auto-create stream announcement for course push
     try {
       const courseIdStr = typeof body.courseId === 'object'
         ? (body.courseId as any)?._id?.toString() || (body.courseId as any)?.toString()
@@ -659,7 +707,7 @@ export class ClassroomLmsService {
       let courseTitle = 'Course';
       try {
         const courseRepoCol = await this.db.getCollection<any>('newCourse');
-        const cObjId = ObjectId.isValid(courseIdStr) ? new ObjectId(courseIdStr) : courseIdStr;
+        const cObjId = safeObjectId(courseIdStr) || courseIdStr;
         const courseDoc = await courseRepoCol.findOne({
           $or: [{ _id: cObjId as any }, { _id: courseIdStr as any }]
         });
@@ -669,7 +717,7 @@ export class ClassroomLmsService {
       const createdAnn = await this.announcementRepo.create({
         classroom_id: classroomId,
         author_id: instructorId,
-        content: `🎉 Course Invitation: ${courseTitle}. Open the Courses tab to view and accept your enrollment!`,
+        content: `🎉 Course Pushed: ${courseTitle}. Check out the Courses tab to begin your learning journey!`,
         type: 'course_invitation',
         referenceId: courseIdStr,
         metadata: {
@@ -694,7 +742,7 @@ export class ClassroomLmsService {
       classroomId,
       courseId: body.courseId,
       versionId: versionId || body.courseId,
-      message: `New course invitation pushed to classroom`,
+      message: `New course pushed to classroom`,
     });
 
     if (body.sendEmails) {
@@ -703,7 +751,7 @@ export class ClassroomLmsService {
           const user = await this.userRepo.findById(m.studentId);
           if (user?.email && this.mailService) {
             const subject = `Course Enrollment: ${classroom.title}`;
-            const html = `<p>Hello ${user.firstName || 'Student'},</p><p>Your instructor has pushed a new course to your classroom: <strong>${classroom.title}</strong>.</p><p>Log in to Vibe to accept your course enrollment and start learning.</p>`;
+            const html = `<p>Hello ${user.firstName || 'Student'},</p><p>Your instructor has pushed a new course to your classroom: <strong>${classroom.title}</strong>.</p><p>Log in to Vibe to start learning.</p>`;
             await this.mailService.sendMail({ to: user.email, subject, html }).catch(() => null);
           }
         } catch (e) {
@@ -713,6 +761,26 @@ export class ClassroomLmsService {
     }
 
     return { success: true, enrolledCount: members.length };
+  }
+
+  async removeCourse(classroomId: string, instructorId: string, courseId: string) {
+    await this._requireOwner(classroomId, instructorId);
+    const classroomCoursesCol = await this.db.getCollection<any>('classroom_courses');
+    const classroomMemberEnrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+
+    const cObjId = safeObjectId(courseId) || courseId;
+
+    await classroomCoursesCol.deleteMany({
+      classroom_id: classroomId,
+      $or: [{ course_id: courseId }, { course_id: cObjId }],
+    });
+
+    await classroomMemberEnrollmentsCol.deleteMany({
+      classroom_id: classroomId,
+      $or: [{ course_id: courseId }, { course_id: cObjId }],
+    });
+
+    return { success: true };
   }
 
   async getStudentAnalyticsRoster(classroomId: string, requesterId: string): Promise<any[]> {

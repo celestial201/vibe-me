@@ -7,12 +7,34 @@ import {
   useClassroomSocket,
   useGetStudentEnrollmentStatus,
 } from '@/hooks/classroom-lms-hooks';
-import { useStartClassroomCourse } from '@/hooks/classroom-hooks';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MessageSquare, Paperclip, Send, FileText, User, Check, X, ShieldAlert, Sparkles, Loader2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  MessageSquare,
+  Paperclip,
+  Send,
+  FileText,
+  User,
+  Check,
+  X,
+  ShieldAlert,
+  Sparkles,
+  Loader2,
+  Lock,
+  Download,
+  Eye,
+  FileArchive,
+  Film,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/utils/utils';
 import { toast } from 'sonner';
@@ -20,9 +42,17 @@ import { toast } from 'sonner';
 interface Props {
   classroomId: string;
   isInstructor?: boolean;
+  streamPostingPermission?: 'everyone' | 'teacher_only';
 }
 
-export function ClassroomStreamTab({ classroomId, isInstructor = false }: Props) {
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15 MB
+const ALLOWED_EXTENSIONS = ['pdf', 'docx', 'zip', 'png', 'jpg', 'jpeg', 'mp4'];
+
+export function ClassroomStreamTab({
+  classroomId,
+  isInstructor = false,
+  streamPostingPermission = 'everyone',
+}: Props) {
   useClassroomSocket(classroomId);
   const { data: announcements, isLoading } = useGetAnnouncements(classroomId);
   const { data: pendingAnnouncements } = useGetPendingAnnouncements(classroomId, isInstructor);
@@ -31,16 +61,38 @@ export function ClassroomStreamTab({ classroomId, isInstructor = false }: Props)
 
   const [content, setContent] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewMedia, setPreviewMedia] = useState<{ url: string; title: string; type: 'pdf' | 'image' | 'video' } | null>(null);
+
+  const canStudentPost = isInstructor || streamPostingPermission === 'everyone';
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setSelectedFiles(Array.from(e.target.files));
+      const files = Array.from(e.target.files);
+      const validFiles: File[] = [];
+
+      for (const file of files) {
+        if (file.size > MAX_FILE_SIZE) {
+          toast.error(`"${file.name}" exceeds the 15 MB upload limit.`);
+          continue;
+        }
+        const ext = file.name.split('.').pop()?.toLowerCase() || '';
+        if (!ALLOWED_EXTENSIONS.includes(ext)) {
+          toast.error(`"${file.name}" is not supported. Allowed formats: PDF, DOCX, ZIP, PNG, JPG, MP4.`);
+          continue;
+        }
+        validFiles.push(file);
+      }
+      setSelectedFiles(validFiles);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
+    if (!canStudentPost) {
+      toast.error('Only teachers can post announcements in this classroom.');
+      return;
+    }
     await createMutation.mutateAsync({ content, files: selectedFiles });
     setContent('');
     setSelectedFiles([]);
@@ -52,49 +104,76 @@ export function ClassroomStreamTab({ classroomId, isInstructor = false }: Props)
     return `${baseUrl}${path}`;
   };
 
+  const getFileIcon = (ext: string) => {
+    switch (ext) {
+      case 'pdf':
+        return <FileText className="w-4 h-4 text-red-500 shrink-0" />;
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+        return <ImageIcon className="w-4 h-4 text-blue-500 shrink-0" />;
+      case 'mp4':
+        return <Film className="w-4 h-4 text-purple-500 shrink-0" />;
+      case 'zip':
+        return <FileArchive className="w-4 h-4 text-amber-500 shrink-0" />;
+      default:
+        return <FileText className="w-4 h-4 text-primary shrink-0" />;
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Create Announcement */}
-      <Card className="border border-border/60 shadow-xs bg-card">
-        <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <Textarea
-              placeholder="Announce something to your class..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="min-h-[90px] text-sm resize-none focus-visible:ring-1"
-            />
-            <div className="flex items-center justify-between pt-1">
-              <div className="flex items-center gap-2">
-                <label className="cursor-pointer inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition px-2.5 py-1.5 rounded-md hover:bg-muted">
-                  <Paperclip className="w-4 h-4" />
-                  <span>Attach File</span>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
-                {selectedFiles.length > 0 && (
-                  <span className="text-xs text-primary font-medium">
-                    {selectedFiles.length} file(s) selected
-                  </span>
-                )}
+      {/* Create Announcement Card */}
+      {canStudentPost ? (
+        <Card className="border border-border/60 shadow-xs bg-card">
+          <CardContent className="pt-6">
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <Textarea
+                placeholder="Announce something to your class..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="min-h-[90px] text-sm resize-none focus-visible:ring-1"
+              />
+              <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center gap-2">
+                  <label className="cursor-pointer inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition px-2.5 py-1.5 rounded-md hover:bg-muted">
+                    <Paperclip className="w-4 h-4" />
+                    <span>Attach File (15MB max)</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.docx,.zip,.png,.jpg,.jpeg,.mp4"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+                  {selectedFiles.length > 0 && (
+                    <span className="text-xs text-primary font-medium">
+                      {selectedFiles.length} file(s) selected
+                    </span>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={createMutation.isPending || !content.trim()}
+                  className="gap-1.5"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  Post Announcement
+                </Button>
               </div>
-              <Button
-                type="submit"
-                size="sm"
-                disabled={createMutation.isPending || !content.trim()}
-                className="gap-1.5"
-              >
-                <Send className="w-3.5 h-3.5" />
-                Post Announcement
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border border-amber-500/30 bg-amber-500/5">
+          <CardContent className="py-4 flex items-center gap-3 text-amber-700 dark:text-amber-400 text-xs font-medium">
+            <Lock className="w-4 h-4 text-amber-500 shrink-0" />
+            <span>Posting in this classroom stream is restricted to teachers only.</span>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Pending Approvals List (Teacher View Only) */}
       {isInstructor && pendingAnnouncements && pendingAnnouncements.length > 0 && (
@@ -163,20 +242,13 @@ export function ClassroomStreamTab({ classroomId, isInstructor = false }: Props)
               announcement.type === 'course_invitation' ||
               Boolean(announcement.metadata?.course_id) ||
               Boolean(announcement.metadata?.courseId) ||
-              announcement.content?.includes('Course Invitation') ||
-              announcement.content?.includes('🎉 Course Invitation');
+              announcement.content?.includes('Course') ||
+              announcement.content?.includes('🎉 Course');
 
             const metadata = announcement.metadata;
-            const courseId =
-              announcement.metadata?.courseId ||
-              announcement.metadata?.course_id ||
-              announcement.referenceId ||
-              announcement.metadata?.course?._id ||
-              (typeof announcement.metadata?.course === 'string' ? announcement.metadata.course : '');
-
             let courseTitle = metadata?.course_title || metadata?.courseTitle || '';
-            if (!courseTitle && post.content.includes('Course Invitation:')) {
-              courseTitle = post.content.split('Course Invitation:')[1]?.split('.')[0]?.trim() || '';
+            if (!courseTitle && post.content.includes('Course:')) {
+              courseTitle = post.content.split('Course:')[1]?.split('.')[0]?.trim() || '';
             }
 
             return (
@@ -204,7 +276,7 @@ export function ClassroomStreamTab({ classroomId, isInstructor = false }: Props)
                         <h4 className="text-sm font-semibold text-foreground">{post.authorName || 'Instructor'}</h4>
                         {isCourseInvitation && (
                           <Badge variant="secondary" className="bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]">
-                            Course Invitation
+                            Classroom Course
                           </Badge>
                         )}
                       </div>
@@ -215,41 +287,58 @@ export function ClassroomStreamTab({ classroomId, isInstructor = false }: Props)
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {isCourseInvitation ? (
-                    <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 space-y-3">
-                      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-sm">
-                        <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span>Course Invitation{courseTitle ? `: ${courseTitle}` : ''}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {post.content}
-                      </p>
-                      <CourseInvitationStreamAction
-                        classroomId={classroomId}
-                        courseId={courseId}
-                        courseTitle={courseTitle}
-                        isInstructor={isInstructor}
-                        announcement={announcement}
-                      />
-                    </div>
-                  ) : (
-                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{post.content}</p>
-                  )}
+                  <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{post.content}</p>
 
                   {post.attachments && post.attachments.length > 0 && (
                     <div className="pt-2 border-t border-border/40 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {post.attachments.map((fileUrl, idx) => (
-                        <a
-                          key={idx}
-                          href={getMediaUrl(fileUrl)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-2 p-2 rounded border border-border/60 bg-muted/40 hover:bg-muted text-xs transition"
-                        >
-                          <FileText className="w-4 h-4 text-primary shrink-0" />
-                          <span className="truncate">{fileUrl.split('/').pop()}</span>
-                        </a>
-                      ))}
+                      {post.attachments.map((fileUrl, idx) => {
+                        const filename = fileUrl.split('/').pop() || 'Attachment';
+                        const ext = filename.split('.').pop()?.toLowerCase() || '';
+                        const fullUrl = getMediaUrl(fileUrl);
+                        const isPreviewable = ['pdf', 'png', 'jpg', 'jpeg', 'mp4'].includes(ext);
+
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between gap-2 p-2 rounded border border-border/60 bg-muted/40 text-xs transition"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              {getFileIcon(ext)}
+                              <span className="truncate">{filename}</span>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {isPreviewable ? (
+                                <Button
+                                  size="xs"
+                                  variant="ghost"
+                                  className="h-6 text-[11px] gap-1 text-primary hover:text-primary/80"
+                                  onClick={() =>
+                                    setPreviewMedia({
+                                      url: fullUrl,
+                                      title: filename,
+                                      type: ext === 'pdf' ? 'pdf' : ext === 'mp4' ? 'video' : 'image',
+                                    })
+                                  }
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  Preview
+                                </Button>
+                              ) : (
+                                <a
+                                  href={fullUrl}
+                                  download
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline px-2 py-1"
+                                >
+                                  <Download className="w-3 h-3" />
+                                  Download
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -258,6 +347,52 @@ export function ClassroomStreamTab({ classroomId, isInstructor = false }: Props)
           })
         )}
       </div>
+
+      {/* Interactive Media / PDF Preview Modal */}
+      <Dialog open={Boolean(previewMedia)} onOpenChange={(open) => !open && setPreviewMedia(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] p-4 flex flex-col">
+          <DialogHeader className="pb-2 flex flex-row items-center justify-between">
+            <DialogTitle className="text-sm font-semibold truncate">
+              {previewMedia?.title}
+            </DialogTitle>
+            {previewMedia?.url && (
+              <a
+                href={previewMedia.url}
+                download
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs text-primary font-medium hover:underline mr-6"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download Original
+              </a>
+            )}
+          </DialogHeader>
+          <div className="flex-1 overflow-auto rounded-lg bg-black/5 dark:bg-black/40 flex items-center justify-center p-2 min-h-[50vh]">
+            {previewMedia?.type === 'pdf' && (
+              <iframe
+                src={previewMedia.url}
+                className="w-full h-[70vh] rounded-md border-0"
+                title={previewMedia.title}
+              />
+            )}
+            {previewMedia?.type === 'image' && (
+              <img
+                src={previewMedia.url}
+                alt={previewMedia.title}
+                className="max-h-[75vh] max-w-full object-contain rounded-md shadow-md"
+              />
+            )}
+            {previewMedia?.type === 'video' && (
+              <video
+                src={previewMedia.url}
+                controls
+                className="max-h-[75vh] max-w-full rounded-md shadow-md"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

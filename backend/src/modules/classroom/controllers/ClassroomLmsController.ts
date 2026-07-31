@@ -3,6 +3,7 @@ import {
   Authorized,
   Body,
   CurrentUser,
+  Delete,
   Get,
   HttpCode,
   JsonController,
@@ -280,6 +281,16 @@ export class ClassroomLmsController {
   ) {
     const instructorId = user._id?.toString() ?? '';
     return this.lmsService.pushCourseToClassroom(params.id, instructorId, body);
+  }
+
+  @OpenAPI({ summary: 'Remove a course from classroom' })
+  @Delete('/:id/courses/:courseId')
+  async removeCourse(
+    @Params() params: { id: string; courseId: string },
+    @CurrentUser() user: IUser,
+  ) {
+    const instructorId = user._id?.toString() ?? '';
+    return this.lmsService.removeCourse(params.id, instructorId, params.courseId);
   }
 
   @OpenAPI({ summary: 'Get full student analytics roster table (Teacher)' })
