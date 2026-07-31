@@ -25,6 +25,7 @@ import {
   CreateAssignmentBody,
   GradeSubmissionBody,
   PushCourseBody,
+  PushCourseToClassroomsBody,
   StudentAnalyticsRosterDTO,
   StudentInsightsResponse,
   SubmissionResponse,
@@ -325,5 +326,46 @@ export class ClassroomLmsController {
   ) {
     const studentId = user._id?.toString() ?? '';
     return this.lmsService.getStudentEnrollmentStatus(params.id, studentId);
+  }
+
+  @OpenAPI({ summary: 'Push a course to multiple classrooms' })
+  @Post('/teacher/courses/:courseId/push-classroom')
+  @Post('/courses/:courseId/push-classroom')
+  async pushCourseToMultipleClassrooms(
+    @Param('courseId') courseId: string,
+    @Body() body: PushCourseToClassroomsBody,
+    @CurrentUser() user: IUser,
+  ) {
+    const targetCourseId = courseId || body.courseId || '';
+    return this.lmsService.pushCourseToMultipleClassrooms(
+      targetCourseId,
+      user,
+      body.classroomIds || [],
+      body.message,
+    );
+  }
+
+  @OpenAPI({ summary: 'Get pending course invitations for current student' })
+  @Get('/student/invitations/pending')
+  async getPendingStudentInvitations(@CurrentUser() user: IUser) {
+    return this.lmsService.getPendingStudentInvitations(user);
+  }
+
+  @OpenAPI({ summary: 'Student accepts course invitation' })
+  @Post('/student/invitations/:invitationId/accept')
+  async acceptStudentInvitation(
+    @Param('invitationId') invitationId: string,
+    @CurrentUser() user: IUser,
+  ) {
+    return this.lmsService.acceptStudentInvitation(invitationId, user);
+  }
+
+  @OpenAPI({ summary: 'Student declines course invitation' })
+  @Post('/student/invitations/:invitationId/decline')
+  async declineStudentInvitation(
+    @Param('invitationId') invitationId: string,
+    @CurrentUser() user: IUser,
+  ) {
+    return this.lmsService.declineStudentInvitation(invitationId, user);
   }
 }

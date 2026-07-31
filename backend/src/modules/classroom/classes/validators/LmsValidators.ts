@@ -130,6 +130,19 @@ export class PushCourseBody {
   sendEmails?: boolean;
 }
 
+export class PushCourseToClassroomsBody {
+  @IsOptional()
+  @IsString()
+  courseId?: string;
+
+  @IsNotEmpty()
+  classroomIds: string[];
+
+  @IsOptional()
+  @IsString()
+  message?: string;
+}
+
 export class StudentAnalyticsRosterDTO {
   studentId: string;
   name: string;

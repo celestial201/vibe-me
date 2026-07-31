@@ -1,4 +1,4 @@
-import { Clock, Trophy, Medal, Info, ExternalLink, Copy, MessageCircle, Users, Check, Sparkles, Play, Activity, Shield as LucideShield, MoreHorizontal, CheckCircle2, Loader2 } from "lucide-react";
+import { Clock, Trophy, Medal, Info, ExternalLink, Copy, MessageCircle, Users, Check, Sparkles, Play, Activity, Shield as LucideShield, MoreHorizontal, CheckCircle2, Loader2, School } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLeaderboard, useCourseVersionById, useCheckTimeSlotAccessOnDemand } from "@/hooks/hooks";
 import { toast } from "sonner";
 import { useCourseStore } from "@/store/course-store";
+import { useAuthStore } from "@/store/auth-store";
 import { useNavigate } from "@tanstack/react-router";
 import { useState, lazy, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import { enterFullscreen, exitFullscreen } from "@/utils/fullscreen";
 import { cn } from "@/utils/utils";
 import type { CourseCardProps } from '@/types/course.types';
 import { StudentPolicyModal } from "@/app/pages/student/components/policies/StudentPolicyModal";
+import { TeacherPushCourseModal } from "@/app/pages/teacher/components/TeacherPushCourseModal";
 
 
 import { EnrollmentDetailsDialog } from "@/components/course/EnrollmentDetailsDialog";
@@ -63,7 +65,13 @@ export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard'
   );
   const supportLink = (courseVersionData as any)?.supportLink;
 
-  const { setCurrentCourse } = useCourseStore();
+  const { user } = useAuthStore();
+  const [isPushModalOpen, setIsPushModalOpen] = useState(false);
+  const isTeacher = Boolean(
+    user?.roles?.some((r: string) => ['TEACHER', 'INSTRUCTOR', 'ADMIN'].includes(r.toUpperCase())) ||
+    (user as any)?.role === 'TEACHER' ||
+    (user as any)?.role === 'INSTRUCTOR'
+  );
   const navigate = useNavigate();
   const { check: checkTimeSlotAccess } = useCheckTimeSlotAccessOnDemand();
   const [isQuickOpen, setIsQuickOpen] = useState(false);
@@ -633,9 +641,27 @@ export const CourseCard = ({ enrollment, index, isLoading, variant = 'dashboard'
                   <Clock className="w-4 h-4 text-green-500" />
                 </Button>
               )}
+              {isTeacher && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsPushModalOpen(true)}
+                  className="gap-1.5 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                  title="Push Course to Classroom"
+                >
+                  <School className="w-3.5 h-3.5" />
+                  Push to Classroom
+                </Button>
+              )}
             </div>
           </div>
         </div>
+        <TeacherPushCourseModal
+          isOpen={isPushModalOpen}
+          onClose={() => setIsPushModalOpen(false)}
+          courseId={courseId}
+          courseTitle={enrollment?.course?.name || (enrollment as any)?.name}
+        />
       </CardContent>
     </Card>
   );

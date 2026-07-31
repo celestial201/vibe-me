@@ -379,7 +379,59 @@ export const classroomLmsApi = {
     if (!res.ok) throw new Error('Failed to fetch enrollment status');
     return res.json();
   },
+
+  pushCourseToMultipleClassrooms: async (courseId: string, classroomIds: string[], message?: string) => {
+    const res = await fetch(`${BASE_URL}/classroom/teacher/courses/${courseId}/push-classroom`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ courseId, classroomIds, message }),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || errJson.error || 'Failed to push course to classrooms');
+    }
+    return res.json();
+  },
+
+  getPendingStudentInvitations: async (): Promise<PendingInvitationDTO[]> => {
+    const res = await fetch(`${BASE_URL}/classroom/student/invitations/pending`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch pending course invitations');
+    return res.json();
+  },
+
+  acceptStudentInvitation: async (invitationId: string): Promise<{ success: boolean; message: string; courseId?: string }> => {
+    const res = await fetch(`${BASE_URL}/classroom/student/invitations/${invitationId}/accept`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to accept invitation');
+    return res.json();
+  },
+
+  declineStudentInvitation: async (invitationId: string): Promise<{ success: boolean; message: string }> => {
+    const res = await fetch(`${BASE_URL}/classroom/student/invitations/${invitationId}/decline`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to decline invitation');
+    return res.json();
+  },
 };
+
+export interface PendingInvitationDTO {
+  invitationId: string;
+  courseId: string;
+  courseVersionId: string;
+  courseTitle: string;
+  courseThumbnail?: string;
+  courseDescription?: string;
+  instructorName: string;
+  classroomName: string;
+  message?: string;
+  createdAt: string;
+}
 
 export interface StudentAnalyticsRosterDTO {
   studentId: string;

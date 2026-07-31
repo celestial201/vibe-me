@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import { BadRequestError, ForbiddenError, NotFoundError } from 'routing-controllers';
 import { ObjectId } from 'mongodb';
 import { safeObjectId } from '#root/shared/functions/idNormalizer.js';
+import { appConfig } from '#root/config/app.js';
 import { CLASSROOM_TYPES } from '../types.js';
 import { ClassroomRepository } from '../repositories/providers/mongodb/ClassroomRepository.js';
 import { AnnouncementRepository } from '../repositories/providers/mongodb/AnnouncementRepository.js';
@@ -1133,5 +1134,318 @@ export class ClassroomLmsService {
       status: d.status || 'invited',
       enrolledAt: d.enrolled_at,
     }));
+  }
+
+  async pushCourseToMultipleClassrooms(
+    courseId: string,
+    instructor: any,
+    classroomIds: string[],
+    message?: string,
+  ) {
+    const courseObjId = safeObjectId(courseId) || courseId;
+    const courseCol = await this.db.getCollection<any>('newCourse');
+    const versionCol = await this.db.getCollection<any>('newCourseVersion');
+    const invitesCol = await this.db.getCollection<any>('invites');
+    const notifsCol = await this.db.getCollection<any>('notifications');
+    const mainEnrollCol = await this.db.getCollection<any>('enrollment');
+    const usersCol = await this.db.getCollection<any>('users');
+
+    const course = await courseCol.findOne({ $or: [{ _id: courseObjId }, { id: courseId }] });
+    if (!course) {
+      throw new NotFoundError('Course not found');
+    }
+
+    const courseVersion = await versionCol.findOne({
+      $or: [{ courseId: courseObjId }, { courseId: courseId }],
+    });
+    const versionObjId = courseVersion?._id || courseObjId;
+
+    const teacherName = instructor
+      ? `${instructor.firstName || ''} ${instructor.lastName || ''}`.trim() || instructor.email
+      : 'Teacher';
+
+    let totalPushed = 0;
+    let totalEligible = 0;
+
+    for (const cId of classroomIds) {
+      const classroom = await this.classroomRepo.findById(cId);
+      if (!classroom) continue;
+
+      const members = await this.classroomRepo.findMembersByClassroom(cId);
+      if (!members || members.length === 0) continue;
+
+      for (const m of members) {
+        const studentIdStr = String(m.studentId);
+        const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+        const student = await usersCol.findOne({
+          $or: [{ _id: studentObjId }, { _id: studentIdStr }, { id: studentIdStr }],
+        });
+
+        if (!student || !student.email) continue;
+
+        // Check if student is already actively enrolled in course
+        const existingActive = await mainEnrollCol.findOne({
+          userId: { $in: [studentObjId, studentIdStr] },
+          courseId: { $in: [courseObjId, courseId] },
+          status: { $in: ['ACTIVE', 'active'] },
+        });
+        if (existingActive) continue;
+
+        totalEligible++;
+
+        // Upsert invitation record
+        const existingInvite = await invitesCol.findOne({
+          email: student.email,
+          courseId: { $in: [courseObjId, courseId] },
+          inviteStatus: 'PENDING',
+        });
+
+        let inviteId: any;
+        if (existingInvite) {
+          inviteId = existingInvite._id;
+          await invitesCol.updateOne(
+            { _id: inviteId },
+            {
+              $set: {
+                message: message || existingInvite.message || '',
+                classroomId: cId,
+                updatedAt: new Date(),
+              },
+            },
+          );
+        } else {
+          inviteId = new ObjectId();
+          await invitesCol.insertOne({
+            _id: inviteId,
+            email: student.email,
+            courseId: courseObjId,
+            courseVersionId: versionObjId,
+            role: 'STUDENT',
+            inviteStatus: 'PENDING',
+            type: 'SINGLE',
+            source: 'CLASSROOM_PUSH',
+            classroomId: cId,
+            teacherId: instructor._id,
+            message: message || '',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          });
+        }
+
+        totalPushed++;
+
+        // Create In-App Notification
+        const notifId = new ObjectId();
+        const notifDoc = {
+          _id: notifId,
+          type: 'COURSE_INVITATION',
+          title: 'Course Invitation',
+          message: `Teacher ${teacherName} pushed "${course.name || course.title}" to ${classroom.title || (classroom as any).name}`,
+          user_id: student._id?.toString() || studentIdStr,
+          link: `/student/dashboard?invitationId=${inviteId.toString()}`,
+          invitationId: inviteId.toString(),
+          status: 'UNREAD',
+          read: false,
+          createdAt: new Date(),
+        };
+
+        await notifsCol.insertOne(notifDoc);
+        emitNewNotification(student._id?.toString() || studentIdStr, notifDoc as any);
+
+        // Dispatch Email Notification
+        const emailSubject = `[Vibe LMS] Teacher ${teacherName} pushed a new course to ${classroom.title || (classroom as any).name}`;
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #18181b;">
+            <h2 style="color: #2563eb; margin-top: 0;">New Course Invitation</h2>
+            <p>Hi ${student.firstName || 'Student'},</p>
+            <p>Your instructor <strong>${teacherName}</strong> has pushed a new course to your classroom <strong>${classroom.title || (classroom as any).name}</strong>.</p>
+            <div style="background: #f4f4f5; border: 1px solid #e4e4e7; border-radius: 8px; padding: 16px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #09090b;">${course.name || course.title}</h3>
+              <p style="color: #71717a; font-size: 14px;">${course.description || ''}</p>
+              ${message ? `<p style="font-style: italic; color: #27272a; margin-top: 12px; border-left: 3px solid #2563eb; padding-left: 10px;">Note: "${message}"</p>` : ''}
+            </div>
+            <a href="${appConfig?.origins?.[0] || 'http://localhost:5173'}/student/dashboard?invitationId=${inviteId.toString()}" style="display: inline-block; background: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 10px;">View Course Invitation</a>
+          </div>
+        `;
+
+        await this.mailService.sendMail({
+          to: student.email,
+          subject: emailSubject,
+          html: emailHtml,
+        }).catch((e) => console.warn('Failed to send course push email to:', student.email, e));
+      }
+    }
+
+    return {
+      success: true,
+      pushedCount: totalPushed,
+      eligibleStudentsCount: totalEligible,
+      message: `Pushed course to ${totalPushed} student(s) across ${classroomIds.length} classroom(s).`,
+    };
+  }
+
+  async getPendingStudentInvitations(user: any) {
+    if (!user || !user.email) return [];
+    const invitesCol = await this.db.getCollection<any>('invites');
+    const courseCol = await this.db.getCollection<any>('newCourse');
+    const usersCol = await this.db.getCollection<any>('users');
+
+    const pendingInvites = await invitesCol
+      .find({ email: user.email, inviteStatus: 'PENDING' })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const results = [];
+    for (const inv of pendingInvites) {
+      const courseIdStr = inv.courseId?.toString() || '';
+      if (courseIdStr.startsWith('course-') || courseIdStr === 'undefined') continue;
+
+      const course = await courseCol.findOne({
+        $or: [{ _id: safeObjectId(courseIdStr) }, { _id: courseIdStr }, { id: courseIdStr }],
+      });
+      if (!course) continue;
+
+      let classroomName = 'Onboarding Classroom';
+      if (inv.classroomId) {
+        const c = await this.classroomRepo.findById(inv.classroomId.toString());
+        if (c) classroomName = c.title || (c as any).name;
+      }
+
+      let instructorName = 'Teacher';
+      if (inv.teacherId) {
+        const tObjId = safeObjectId(inv.teacherId.toString()) || inv.teacherId.toString();
+        const teacher = await usersCol.findOne({
+          $or: [{ _id: tObjId }, { id: inv.teacherId.toString() }],
+        });
+        if (teacher) {
+          instructorName = `${teacher.firstName || ''} ${teacher.lastName || ''}`.trim() || teacher.email;
+        }
+      }
+
+      results.push({
+        invitationId: inv._id.toString(),
+        courseId: course._id?.toString() || courseIdStr,
+        courseVersionId: inv.courseVersionId?.toString() || '',
+        courseTitle: course.name || course.title || 'Course',
+        courseThumbnail: course.thumbnail || course.imageUrl || '',
+        courseDescription: course.description || '',
+        instructorName,
+        classroomName,
+        message: inv.message || '',
+        createdAt: inv.createdAt || new Date(),
+      });
+    }
+
+    return results;
+  }
+
+  async acceptStudentInvitation(invitationId: string, user: any) {
+    const invitesCol = await this.db.getCollection<any>('invites');
+    const mainEnrollCol = await this.db.getCollection<any>('enrollment');
+    const progressCol = await this.db.getCollection<any>('progress');
+    const courseCol = await this.db.getCollection<any>('newCourse');
+
+    const invObjId = safeObjectId(invitationId) || invitationId;
+    const invite = await invitesCol.findOne({ _id: invObjId });
+
+    if (!invite) {
+      throw new NotFoundError('Invitation not found');
+    }
+
+    if (invite.inviteStatus === 'ACCEPTED') {
+      return { success: true, message: 'You have already accepted this invitation.' };
+    }
+
+    // Mark invitation accepted
+    await invitesCol.updateOne(
+      { _id: invite._id },
+      { $set: { inviteStatus: 'ACCEPTED', acceptedAt: new Date() } }
+    );
+
+    const studentIdStr = user._id?.toString() || user.id?.toString();
+    const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+    const courseIdStr = invite.courseId?.toString();
+    const courseObjId = safeObjectId(courseIdStr) || courseIdStr;
+    const versionObjId = safeObjectId(invite.courseVersionId?.toString()) || invite.courseVersionId;
+
+    // Create active enrollment in primary enrollment collection
+    await mainEnrollCol.updateOne(
+      {
+        userId: { $in: [studentObjId, studentIdStr] },
+        courseId: { $in: [courseObjId, courseIdStr] },
+      },
+      {
+        $set: {
+          userId: studentObjId,
+          courseId: courseObjId,
+          courseVersionId: versionObjId,
+          role: 'STUDENT',
+          status: 'ACTIVE',
+          accepted: true,
+          enrollmentDate: new Date(),
+          isDeleted: false,
+          classroomId: invite.classroomId,
+        },
+        $setOnInsert: {
+          percentCompleted: 0,
+          completedItemsCount: 0,
+        },
+      },
+      { upsert: true }
+    );
+
+    // Initialize progress document
+    await progressCol.updateOne(
+      {
+        userId: { $in: [studentObjId, studentIdStr] },
+        courseId: { $in: [courseObjId, courseIdStr] },
+      },
+      {
+        $set: {
+          userId: studentObjId,
+          courseId: courseObjId,
+          courseVersionId: versionObjId,
+          updatedAt: new Date(),
+        },
+        $setOnInsert: {
+          completedItemIds: [],
+          percentCompleted: 0,
+          createdAt: new Date(),
+        },
+      },
+      { upsert: true }
+    );
+
+    // Get course title
+    const course = await courseCol.findOne({ $or: [{ _id: courseObjId }, { id: courseIdStr }] });
+    const courseTitle = course?.name || course?.title || 'Course';
+
+    try {
+      emitEnrollmentAccepted(invite.classroomId || '', studentIdStr, courseIdStr);
+    } catch (_) {}
+
+    return {
+      success: true,
+      message: `Successfully enrolled in ${courseTitle}!`,
+      courseId: courseIdStr,
+    };
+  }
+
+  async declineStudentInvitation(invitationId: string, user: any) {
+    const invitesCol = await this.db.getCollection<any>('invites');
+    const invObjId = safeObjectId(invitationId) || invitationId;
+
+    const invite = await invitesCol.findOne({ _id: invObjId });
+    if (!invite) {
+      throw new NotFoundError('Invitation not found');
+    }
+
+    await invitesCol.updateOne(
+      { _id: invite._id },
+      { $set: { inviteStatus: 'DECLINED', declinedAt: new Date() } }
+    );
+
+    return { success: true, message: 'Invitation declined' };
   }
 }
