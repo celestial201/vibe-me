@@ -3,6 +3,7 @@ import { BadRequestError, ForbiddenError, NotFoundError, UnauthorizedError } fro
 import { CLASSROOM_TYPES } from '../types.js';
 import type { IClassroomRepository } from '../repositories/interfaces/IClassroomRepository.js';
 import { ObjectId } from 'mongodb';
+import { safeObjectId } from '#root/shared/functions/idNormalizer.js';
 import {
   AssignCourseBody,
   BatchAssignCourseBody,
@@ -347,7 +348,7 @@ export class ClassroomService {
         };
         await this.repo.assignCourse(data);
 
-        // Update classroom_member_enrollments for students in classroom
+        // Update classroom_member_enrollments & primary enrollment for students in classroom
         try {
           const members = await this.repo.findMembersByClassroom(classroomId);
           if (members && members.length > 0) {
@@ -366,8 +367,8 @@ export class ClassroomService {
                     course_id: courseId,
                     version_id: versionId,
                     source_classroom_id: classroomId,
-                    status: 'pending_acceptance',
-                    accepted: false,
+                    status: 'active',
+                    accepted: true,
                     progress: 0,
                     progress_percentage: 0,
                     enrolled_at: new Date(),
@@ -377,6 +378,72 @@ export class ClassroomService {
               },
             }));
             await enrollmentsCol.bulkWrite(bulkOps);
+
+            // Primary 'enrollment' collection sync
+            const mainEnrollCol = await this.db.getCollection<any>('enrollment');
+            const courseObjId = safeObjectId(courseId) || courseId;
+            const versionObjId = safeObjectId(versionId) || versionId;
+            const mainOps = members.map((m) => {
+              const studentIdStr = String(m.studentId);
+              const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+              return {
+                updateOne: {
+                  filter: {
+                    userId: { $in: [studentObjId, studentIdStr] },
+                    courseId: { $in: [courseObjId, courseId] },
+                  },
+                  update: {
+                    $set: {
+                      userId: studentObjId,
+                      courseId: courseObjId,
+                      courseVersionId: versionObjId,
+                      role: 'STUDENT',
+                      status: 'ACTIVE',
+                      accepted: true,
+                      enrollmentDate: new Date(),
+                      isDeleted: false,
+                      classroomId: classroomId,
+                    },
+                    $setOnInsert: {
+                      percentCompleted: 0,
+                      completedItemsCount: 0,
+                    },
+                  },
+                  upsert: true,
+                },
+              };
+            });
+            await mainEnrollCol.bulkWrite(mainOps);
+
+            // Primary 'progress' collection sync
+            const progressCol = await this.db.getCollection<any>('progress');
+            const progOps = members.map((m) => {
+              const studentIdStr = String(m.studentId);
+              const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+              return {
+                updateOne: {
+                  filter: {
+                    userId: { $in: [studentObjId, studentIdStr] },
+                    courseId: { $in: [courseObjId, courseId] },
+                  },
+                  update: {
+                    $set: {
+                      userId: studentObjId,
+                      courseId: courseObjId,
+                      courseVersionId: versionObjId,
+                      updatedAt: new Date(),
+                    },
+                    $setOnInsert: {
+                      completedItemIds: [],
+                      percentCompleted: 0,
+                      createdAt: new Date(),
+                    },
+                  },
+                  upsert: true,
+                },
+              };
+            });
+            await progressCol.bulkWrite(progOps);
           }
         } catch (mErr) {
           console.warn('Failed to update classroom member enrollments:', mErr);

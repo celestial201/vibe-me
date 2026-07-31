@@ -284,10 +284,42 @@ export class ClassroomRepository implements IClassroomRepository {
 
   async removeCourse(classroomId: string, courseId: string): Promise<void> {
     await this.init();
-    await this.courses.deleteOne({
-      classroomId: toObjectId(classroomId) as any,
-      courseId: toObjectId(courseId) as any,
+    const cObj = toObjectId(classroomId);
+    const crObj = toObjectId(courseId);
+    
+    // Delete matching course assignments from classroom_courses
+    await this.courses.deleteMany({
+      $and: [
+        {
+          $or: [
+            { classroomId: cObj as any },
+            { classroomId: classroomId as any },
+            { classroom_id: cObj as any },
+            { classroom_id: classroomId as any },
+          ],
+        },
+        {
+          $or: [
+            { courseId: crObj as any },
+            { courseId: courseId as any },
+            { course_id: crObj as any },
+            { course_id: courseId as any },
+          ],
+        },
+      ],
     });
+
+    // Also clean up any legacy course-0 dummy assignments
+    try {
+      await this.courses.deleteMany({
+        $or: [
+          { courseId: 'course-0' },
+          { course_id: 'course-0' },
+          { courseId: /^course-\d+$/ },
+          { course_id: /^course-\d+$/ },
+        ],
+      });
+    } catch (_) {}
   }
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────

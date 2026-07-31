@@ -675,7 +675,7 @@ export class ClassroomLmsService {
                 courseId: courseObjId,
                 courseVersionId: versionObjId,
                 role: 'STUDENT',
-                status: 'active',
+                status: 'ACTIVE',
                 accepted: true,
                 enrollmentDate: new Date(),
                 isDeleted: false,
@@ -693,6 +693,42 @@ export class ClassroomLmsService {
 
       if (mainBulkOps.length > 0) {
         await mainEnrollCol.bulkWrite(mainBulkOps);
+      }
+
+      // Initialize progress collection documents for seamless course player access
+      try {
+        const progressCol = await this.db.getCollection<any>('progress');
+        const progressBulkOps = members.map((m) => {
+          const studentIdStr = String(m.studentId);
+          const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+          return {
+            updateOne: {
+              filter: {
+                userId: { $in: [studentObjId, studentIdStr] },
+                courseId: { $in: [courseObjId, courseIdStr] },
+              },
+              update: {
+                $set: {
+                  userId: studentObjId,
+                  courseId: courseObjId,
+                  courseVersionId: versionObjId,
+                  updatedAt: new Date(),
+                },
+                $setOnInsert: {
+                  completedItemIds: [],
+                  percentCompleted: 0,
+                  createdAt: new Date(),
+                },
+              },
+              upsert: true,
+            },
+          };
+        });
+        if (progressBulkOps.length > 0) {
+          await progressCol.bulkWrite(progressBulkOps);
+        }
+      } catch (pErr) {
+        console.warn('Failed to initialize progress documents:', pErr);
       }
     } catch (e) {
       console.error('Failed to perform primary cohort bulk enrollment:', e);
