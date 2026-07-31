@@ -1245,3 +1245,15 @@ export interface IClassroomSubmission {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface IClassroomVaultItem {
+  _id?: ID;
+  classroom_id: ID;
+  instructor_id: ID;
+  title: string;
+  type: 'link' | 'pdf' | 'csv' | 'other';
+  url: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}

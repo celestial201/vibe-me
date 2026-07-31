@@ -2,6 +2,7 @@ const TYPES = {
   // Services
   ClassroomService: Symbol.for('ClassroomService'),
   ClassroomLmsService: Symbol.for('ClassroomLmsService'),
+  VaultService: Symbol.for('VaultService'),
 
   // Repositories
   ClassroomRepository: Symbol.for('ClassroomRepository'),
@@ -11,6 +12,7 @@ const TYPES = {
   JournalRepository: Symbol.for('JournalRepository'),
   JournalSubmissionRepository: Symbol.for('JournalSubmissionRepository'),
   NotificationRepository: Symbol.for('NotificationRepository'),
+  VaultRepository: Symbol.for('VaultRepository'),
 };
 
 export { TYPES as CLASSROOM_TYPES };
