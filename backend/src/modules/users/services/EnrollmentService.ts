@@ -835,13 +835,21 @@ export class EnrollmentService extends BaseService {
           });
         } catch (_) {}
 
+        if (!courseDoc) {
+          // Skip deleted or missing course references
+          continue;
+        }
+
         const vId = doc.version_id?.toString() ||
                     courseDoc?.versions?.[0]?._id?.toString() ||
                     courseDoc?.versions?.[0]?.versionId?.toString() ||
                     courseDoc?.defaultVersionId?.toString() ||
                     cId;
 
-        const resolvedTitle = courseDoc?.name || courseDoc?.title || courseDoc?.courseName || 'Classroom Course';
+        const resolvedTitle = courseDoc?.name || courseDoc?.title || courseDoc?.courseName;
+        if (!resolvedTitle) {
+          continue;
+        }
 
         result.push({
           _id: doc._id.toString(),

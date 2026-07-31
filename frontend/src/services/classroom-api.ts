@@ -40,6 +40,7 @@ export interface ClassroomDTO {
   code: string;
   instructorId: string;
   status: 'active' | 'archived';
+  streamPostingPermission?: 'everyone' | 'teacher_only';
   start_date?: string;
   end_date?: string;
   createdAt: string;
@@ -62,8 +63,27 @@ export interface ClassroomCourseDTO {
   courseId: string;
   versionId: string;
   courseName?: string;
+  courseDescription?: string;
   versionName?: string;
   assignedAt: string;
+  isEnrolled?: boolean;
+  progressPercentage?: number;
+}
+
+export interface BatchAssignCourseResponseDTO {
+  success: boolean;
+  assigned: Array<{ classroomId: string; courseId: string; versionId: string }>;
+  alreadyAssigned: Array<{ classroomId: string; courseId: string }>;
+  failed: Array<{ classroomId: string; reason: string }>;
+}
+
+export interface StudentProgressDTO {
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  isEnrolled: boolean;
+  progressPercentage: number;
+  completedItemsCount: number;
 }
 
 // ── Classroom CRUD ────────────────────────────────────────────────────────────
@@ -78,8 +98,11 @@ export const classroomApi = {
   getClassroom: (id: string) =>
     request<ClassroomDTO>('GET', `${BASE}/${id}`),
 
-  updateClassroom: (id: string, body: { title?: string; description?: string; start_date?: string; end_date?: string }) =>
+  updateClassroom: (id: string, body: { title?: string; description?: string; streamPostingPermission?: 'everyone' | 'teacher_only'; start_date?: string; end_date?: string }) =>
     request<ClassroomDTO>('PUT', `${BASE}/${id}`, body),
+
+  resetJoinCode: (id: string) =>
+    request<ClassroomDTO>('POST', `${BASE}/${id}/reset-code`),
 
   deleteClassroom: (id: string) =>
     request<void>('DELETE', `${BASE}/${id}`),
@@ -106,9 +129,29 @@ export const classroomApi = {
       versionId,
     }),
 
+  batchAssignCourse: (courseId: string, classroomIds: string[]) =>
+    request<BatchAssignCourseResponseDTO>('POST', `${BASE}/course-assignments`, {
+      courseId,
+      classroomIds,
+    }),
+
+  startCourse: (classroomId: string, courseId: string) => {
+    let cleanId = courseId;
+    if (typeof courseId === 'object' && courseId !== null) {
+      cleanId = (courseId as any)._id || (courseId as any).courseId || (courseId as any).$oid || (courseId as any).toString?.() || '';
+    }
+    cleanId = String(cleanId || '').trim();
+    if (cleanId === '[object Object]') cleanId = '';
+    return request<{ success: boolean; courseId: string; versionId: string }>('POST', `${BASE}/${classroomId}/courses/${cleanId}/start`);
+  },
+
+  getCourseProgress: (classroomId: string, courseId: string) =>
+    request<StudentProgressDTO[]>('GET', `${BASE}/${classroomId}/courses/${courseId}/progress`),
+
   removeCourse: (classroomId: string, courseId: string) =>
     request<void>('DELETE', `${BASE}/${classroomId}/courses/${courseId}`),
 };
 
 export const fetchJoinedClassrooms = classroomApi.getJoinedClassrooms;
+
 

@@ -7,9 +7,7 @@ import { useCourseVersionById, useLeaderboard, useCheckTimeSlotAccessOnDemand } 
 import { toast } from "sonner";
 import { useCourseStore } from "@/store/course-store";
 import { useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, lazy, Suspense } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { classroomLmsApi, BASE_URL } from "@/services/classroom-lms-api";
+import { useState, lazy, Suspense } from "react";
 import { normalizeIdString } from "@/utils/helpers";
 import { enterFullscreen, exitFullscreen } from "@/utils/fullscreen";
 import { cn } from "@/utils/utils";
@@ -44,46 +42,6 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
   const [isForumOpen, setIsForumOpen] = useState(false);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-
-  const isPending = enrollment?.accepted === false ||
-                    (enrollment as any)?.enrollmentStatus === 'PENDING_INVITATION' ||
-                    (enrollment as any)?.status === 'PENDING_INVITATION';
-
-  const [isAccepting, setIsAccepting] = useState(false);
-  const [acceptedLocal, setAcceptedLocal] = useState(!isPending);
-  const queryClient = useQueryClient();
-
-  useEffect(() => {
-    setAcceptedLocal(!isPending);
-  }, [isPending]);
-
-  const handleAccept = async (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setIsAccepting(true);
-    try {
-      const classroomId = (enrollment as any).classroomId || (enrollment as any).sourceClassroomId;
-      if (classroomId && courseId) {
-        await classroomLmsApi.acceptCourseEnrollment(classroomId, courseId);
-      } else {
-        await fetch(`${BASE_URL}/classroom/courses/${courseId}/accept`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-      }
-      setAcceptedLocal(true);
-      toast.success("Invitation accepted! You are now enrolled.");
-      queryClient.invalidateQueries({ queryKey: ["get", "/users/enrollments"] });
-      queryClient.invalidateQueries({ queryKey: ["user-enrollments"] });
-    } catch (err) {
-      console.error("Failed to accept enrollment:", err);
-      toast.error("Failed to accept invitation. Please try again.");
-    } finally {
-      setIsAccepting(false);
-    }
-  };
 
   const progress = Number(Math.min(enrollment.percentCompleted ?? 0, 100).toFixed(2));
   const hasAssignedTimeslot = Array.isArray(enrollment.assignedTimeSlot)
@@ -123,8 +81,7 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
     "bg-pink-500/10 text-pink-600 dark:text-pink-400",
   ];
   const iconTheme = iconThemes[index % iconThemes.length];
-
-  const hasMenu = variant !== 'available' && isNotGuruSetu && acceptedLocal;
+  const hasMenu = variant !== 'available' && isNotGuruSetu;
 
   const handleContinue = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -169,11 +126,6 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
       {/* Main content */}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {!acceptedLocal && (
-            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 text-[10px] uppercase font-bold">
-              Invitation Pending
-            </Badge>
-          )}
           <h3
             className="truncate text-base font-bold leading-tight text-foreground sm:text-lg"
             title={enrollment?.course?.name || enrollment?.course?.title || `Course ${index + 1}`}
@@ -196,8 +148,7 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
             {instructorName || 'Discover and enroll'}
           </p>
         )}
-
-        {acceptedLocal && variant !== 'available' ? (
+        {variant !== 'available' ? (
           <div className="mt-2.5 space-y-1.5">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="text-muted-foreground">
@@ -213,31 +164,12 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
           </div>
         ) : (
           <p className="mt-1.5 text-xs text-muted-foreground">
-            {!acceptedLocal ? "Course pushed to your classroom. Accept invitation to begin." : `${videoCount} Videos • ${quizCount} Quizzes`}
+            {`${videoCount} Videos • ${quizCount} Quizzes`}
           </p>
         )}
       </div>
 
       <div className="flex shrink-0 items-center gap-2 self-stretch sm:self-center">
-        {!acceptedLocal ? (
-          <Button
-            onClick={handleAccept}
-            disabled={isAccepting}
-            className="h-9 flex-1 gap-1.5 rounded-xl font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-md sm:flex-none animate-pulse hover:animate-none"
-          >
-            {isAccepting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Accepting...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="h-4 w-4" />
-                Accept Invitation
-              </>
-            )}
-          </Button>
-        ) : (
           <Button
             onClick={handleContinue}
             className={cn(
@@ -252,7 +184,6 @@ export const CourseListCard = ({ enrollment, index, isLoading: _isLoading, varia
             {variant === 'available' ? 'Register' : progress === 0 ? 'Start' : isCompleted ? 'Review' : 'Continue'}
             <Play className="h-3.5 w-3.5 fill-current" />
           </Button>
-        )}
 
         {hasMenu && (
           <>

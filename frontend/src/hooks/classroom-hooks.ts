@@ -55,7 +55,7 @@ export function useCreateClassroom() {
 
 export function useUpdateClassroom(id: string) {
   const qc = useQueryClient();
-  return useMutation<ClassroomDTO, Error, { title?: string; description?: string }>({
+  return useMutation<ClassroomDTO, Error, { title?: string; description?: string; streamPostingPermission?: 'everyone' | 'teacher_only' }>({
     mutationFn: (body) => classroomApi.updateClassroom(id, body),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: CK.myClassrooms });
@@ -63,6 +63,19 @@ export function useUpdateClassroom(id: string) {
       toast.success('Classroom updated!');
     },
     onError: (e) => toast.error(e.message ?? 'Failed to update classroom'),
+  });
+}
+
+export function useResetJoinCode(id: string) {
+  const qc = useQueryClient();
+  return useMutation<ClassroomDTO, Error, void>({
+    mutationFn: () => classroomApi.resetJoinCode(id),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: CK.myClassrooms });
+      qc.setQueryData(CK.classroom(id), data);
+      toast.success('Classroom join code regenerated!');
+    },
+    onError: (e) => toast.error(e.message ?? 'Failed to reset join code'),
   });
 }
 
@@ -156,3 +169,54 @@ export function useGetStudentClassroomCourses(classroomId: string, enabled = tru
     staleTime: 30_000,
   });
 }
+
+export function useBatchAssignCourse() {
+  const qc = useQueryClient();
+  return useMutation<
+    import('@/services/classroom-api').BatchAssignCourseResponseDTO,
+    Error,
+    { courseId: string; classroomIds: string[] }
+  >({
+    mutationFn: ({ courseId, classroomIds }) => classroomApi.batchAssignCourse(courseId, classroomIds),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['classrooms'] });
+      qc.invalidateQueries({ queryKey: ['classroom-courses'] });
+      if (res.assigned.length > 0 && res.alreadyAssigned.length > 0) {
+        toast.success(`Course assigned to ${res.assigned.length} Classroom(s). It was already assigned to ${res.alreadyAssigned.length} Classroom(s).`);
+      } else if (res.assigned.length > 0) {
+        toast.success(`Course assigned successfully to ${res.assigned.length} Classroom(s).`);
+      } else if (res.alreadyAssigned.length > 0) {
+        toast.info(`This course is already assigned to all selected Classroom(s).`);
+      }
+    },
+    onError: (e) => toast.error(e.message ?? 'Failed to assign course to classrooms'),
+  });
+}
+
+export function useStartClassroomCourse(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ success: boolean; courseId: string; versionId: string }, Error, string>({
+    mutationFn: (courseId) => classroomApi.startCourse(classroomId, courseId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CK.courses(classroomId) });
+      qc.invalidateQueries({ queryKey: ['enrollments'] });
+      qc.invalidateQueries({ queryKey: ['user-enrollments'] });
+      qc.invalidateQueries({ queryKey: ['classroom-courses'] });
+      qc.invalidateQueries({ queryKey: ['announcements', classroomId] });
+      qc.invalidateQueries({ queryKey: ['student-enrollment-status', classroomId] });
+      toast.success('Course started! Added to your My Courses panel.');
+    },
+    onError: (e) => toast.error(e.message ?? 'Failed to start course'),
+  });
+}
+
+
+export function useGetClassroomCourseProgress(classroomId: string, courseId: string, enabled = true) {
+  return useQuery<import('@/services/classroom-api').StudentProgressDTO[]>({
+    queryKey: ['classroom-course-progress', classroomId, courseId],
+    queryFn: () => classroomApi.getCourseProgress(classroomId, courseId),
+    enabled: enabled && !!classroomId && !!courseId,
+    refetchInterval: 12_000,
+  });
+}
+

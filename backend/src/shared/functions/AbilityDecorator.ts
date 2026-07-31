@@ -58,19 +58,18 @@ export function Ability(
       }
 
       // Get user's enrollments
+      const userId = user._id ? user._id.toString() : (user as any).id || (user as any).userId || '';
       const enrollmentService = getFromContainer(EnrollmentService);
-      const enrollments = await enrollmentService.getAllEnrollments(
-        user._id.toString(),
-      );
+      const enrollments = userId ? await enrollmentService.getAllEnrollments(userId) : [];
 
       // Create authenticated user object
       const authenticatedUser: AuthenticatedUser = {
-        userId: user._id.toString(),
+        userId: userId,
         globalRole: normalizeGlobalRole(user.roles),
         enrollments: enrollments
           .map(enrollment => ({
-            courseId: enrollment.courseId.toString(),
-            versionId: enrollment.courseVersionId.toString(),
+            courseId: enrollment.courseId ? enrollment.courseId.toString() : '',
+            versionId: enrollment.courseVersionId ? enrollment.courseVersionId.toString() : '',
             role: normalizeEnrollmentRole(enrollment.role),
           }))
           .filter(

@@ -1,6 +1,7 @@
 import { inject, injectable } from 'inversify';
 import { BadRequestError, ForbiddenError, NotFoundError } from 'routing-controllers';
 import { ObjectId } from 'mongodb';
+import { safeObjectId } from '#root/shared/functions/idNormalizer.js';
 import { CLASSROOM_TYPES } from '../types.js';
 import { ClassroomRepository } from '../repositories/providers/mongodb/ClassroomRepository.js';
 import { AnnouncementRepository } from '../repositories/providers/mongodb/AnnouncementRepository.js';
@@ -637,8 +638,8 @@ export class ClassroomLmsService {
             course_id: body.courseId,
             version_id: versionId || body.courseId,
             source_classroom_id: classroomId,
-            status: 'pending_acceptance',
-            accepted: false,
+            status: 'active',
+            accepted: true,
             progress: 0,
             progress_percentage: 0,
             enrolled_at: new Date(),
@@ -650,24 +651,122 @@ export class ClassroomLmsService {
 
     await enrollmentsCol.bulkWrite(bulkOps);
 
-    // 3. Auto-create stream announcement for course invitation
+    // 2b. Direct cohort auto-enrollment in primary 'enrollment' collection
     try {
-      const courseRepoCol = await this.db.getCollection<any>('newCourse');
-      const courseDoc = await courseRepoCol.findOne({ _id: body.courseId as any });
-      const courseTitle = courseDoc?.name || 'New Course';
+      const mainEnrollCol = await this.db.getCollection<any>('enrollment');
+      const courseIdStr = typeof body.courseId === 'object'
+        ? (body.courseId as any)?._id?.toString() || (body.courseId as any)?.toString()
+        : String(body.courseId || '');
+      const courseObjId = safeObjectId(courseIdStr) || courseIdStr;
+      const versionObjId = safeObjectId(versionId || courseIdStr) || (versionId || courseIdStr);
+
+      const mainBulkOps = members.map((m) => {
+        const studentIdStr = String(m.studentId);
+        const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+        return {
+          updateOne: {
+            filter: {
+              userId: { $in: [studentObjId, studentIdStr] },
+              courseId: { $in: [courseObjId, courseIdStr] },
+            },
+            update: {
+              $set: {
+                userId: studentObjId,
+                courseId: courseObjId,
+                courseVersionId: versionObjId,
+                role: 'STUDENT',
+                status: 'ACTIVE',
+                accepted: true,
+                enrollmentDate: new Date(),
+                isDeleted: false,
+                classroomId: classroomId,
+              },
+              $setOnInsert: {
+                percentCompleted: 0,
+                completedItemsCount: 0,
+              },
+            },
+            upsert: true,
+          },
+        };
+      });
+
+      if (mainBulkOps.length > 0) {
+        await mainEnrollCol.bulkWrite(mainBulkOps);
+      }
+
+      // Initialize progress collection documents for seamless course player access
+      try {
+        const progressCol = await this.db.getCollection<any>('progress');
+        const progressBulkOps = members.map((m) => {
+          const studentIdStr = String(m.studentId);
+          const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
+          return {
+            updateOne: {
+              filter: {
+                userId: { $in: [studentObjId, studentIdStr] },
+                courseId: { $in: [courseObjId, courseIdStr] },
+              },
+              update: {
+                $set: {
+                  userId: studentObjId,
+                  courseId: courseObjId,
+                  courseVersionId: versionObjId,
+                  updatedAt: new Date(),
+                },
+                $setOnInsert: {
+                  completedItemIds: [],
+                  percentCompleted: 0,
+                  createdAt: new Date(),
+                },
+              },
+              upsert: true,
+            },
+          };
+        });
+        if (progressBulkOps.length > 0) {
+          await progressCol.bulkWrite(progressBulkOps);
+        }
+      } catch (pErr) {
+        console.warn('Failed to initialize progress documents:', pErr);
+      }
+    } catch (e) {
+      console.error('Failed to perform primary cohort bulk enrollment:', e);
+    }
+
+    // 3. Auto-create stream announcement for course push
+    try {
+      const courseIdStr = typeof body.courseId === 'object'
+        ? (body.courseId as any)?._id?.toString() || (body.courseId as any)?.toString()
+        : String(body.courseId || '');
+
+      let courseTitle = 'Course';
+      try {
+        const courseRepoCol = await this.db.getCollection<any>('newCourse');
+        const cObjId = safeObjectId(courseIdStr) || courseIdStr;
+        const courseDoc = await courseRepoCol.findOne({
+          $or: [{ _id: cObjId as any }, { _id: courseIdStr as any }]
+        });
+        courseTitle = courseDoc?.name || courseDoc?.title || 'Course';
+      } catch (_) {}
 
       const createdAnn = await this.announcementRepo.create({
         classroom_id: classroomId,
         author_id: instructorId,
-        content: `🎉 Course Invitation: ${courseTitle}. Open the Courses tab to view and accept your enrollment!`,
+        content: `🎉 Course Pushed: ${courseTitle}. Check out the Courses tab to begin your learning journey!`,
         type: 'course_invitation',
+        referenceId: courseIdStr,
         metadata: {
-          course_id: body.courseId,
+          course_id: courseIdStr,
+          courseId: courseIdStr,
           course_title: courseTitle,
+          courseTitle: courseTitle,
         },
+        status: 'approved',
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+      emitNewAnnouncement(classroomId, createdAnn);
       emitStreamUpdated(classroomId, createdAnn);
     } catch (err) {
       console.error('Failed to post stream announcement for course push:', err);
@@ -679,7 +778,7 @@ export class ClassroomLmsService {
       classroomId,
       courseId: body.courseId,
       versionId: versionId || body.courseId,
-      message: `New course invitation pushed to classroom`,
+      message: `New course pushed to classroom`,
     });
 
     if (body.sendEmails) {
@@ -688,7 +787,7 @@ export class ClassroomLmsService {
           const user = await this.userRepo.findById(m.studentId);
           if (user?.email && this.mailService) {
             const subject = `Course Enrollment: ${classroom.title}`;
-            const html = `<p>Hello ${user.firstName || 'Student'},</p><p>Your instructor has pushed a new course to your classroom: <strong>${classroom.title}</strong>.</p><p>Log in to Vibe to accept your course enrollment and start learning.</p>`;
+            const html = `<p>Hello ${user.firstName || 'Student'},</p><p>Your instructor has pushed a new course to your classroom: <strong>${classroom.title}</strong>.</p><p>Log in to Vibe to start learning.</p>`;
             await this.mailService.sendMail({ to: user.email, subject, html }).catch(() => null);
           }
         } catch (e) {
@@ -700,15 +799,50 @@ export class ClassroomLmsService {
     return { success: true, enrolledCount: members.length };
   }
 
-  async getStudentAnalyticsRoster(classroomId: string, instructorId: string): Promise<StudentAnalyticsRosterDTO[]> {
+  async removeCourse(classroomId: string, instructorId: string, courseId: string) {
+    await this._requireOwner(classroomId, instructorId);
+    const classroomCoursesCol = await this.db.getCollection<any>('classroom_courses');
+    const classroomMemberEnrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+
+    const cObjId = safeObjectId(courseId) || courseId;
+
+    await classroomCoursesCol.deleteMany({
+      classroom_id: classroomId,
+      $or: [{ course_id: courseId }, { course_id: cObjId }],
+    });
+
+    await classroomMemberEnrollmentsCol.deleteMany({
+      classroom_id: classroomId,
+      $or: [{ course_id: courseId }, { course_id: cObjId }],
+    });
+
+    return { success: true };
+  }
+
+  async getStudentAnalyticsRoster(classroomId: string, requesterId: string): Promise<any[]> {
     const classroom = await this.classroomRepo.findById(classroomId);
     if (!classroom) throw new NotFoundError('Classroom not found');
-    if (classroom.instructorId !== instructorId) {
-      throw new ForbiddenError('Only the classroom instructor can view analytics.');
-    }
 
     const members = await this.classroomRepo.findMembersByClassroom(classroomId);
     if (!members || members.length === 0) return [];
+
+    const isTeacher = classroom.instructorId?.toString() === requesterId;
+
+    if (!isTeacher) {
+      const studentRoster = [];
+      for (const m of members) {
+        const studentId = String(m.studentId);
+        const user = await this.userRepo.findById(studentId);
+        const classmateName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Classmate';
+        studentRoster.push({
+          studentId,
+          classmateName,
+          joiningDate: m.joinedAt || new Date(),
+        });
+      }
+      return studentRoster;
+    }
+
 
     const assignments = await this.assignmentRepo.findByClassroom(classroomId);
     const submissions = await this.submissionRepo.findByClassroom(classroomId);
@@ -747,22 +881,38 @@ export class ClassroomLmsService {
       });
 
       const enrollDoc = enrollmentMap.get(studentId);
-      const courseAccepted: 'accepted' | 'pending' = enrollDoc?.accepted ? 'accepted' : 'pending';
+      let courseAccepted: 'accepted' | 'pending' =
+        enrollDoc?.accepted || enrollDoc?.status === 'accepted' || enrollDoc?.status === 'active'
+          ? 'accepted'
+          : 'pending';
       let courseProgress: number = enrollDoc?.progress || enrollDoc?.progress_percentage || 0;
 
-      if (courseAccepted === 'accepted' && (!courseProgress || courseProgress === 0)) {
-        try {
-          const mainEnrollCol = await this.db.getCollection<any>('enrollments');
-          const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
-          const activeEnr = await mainEnrollCol.findOne({
-            userId: { $in: [userObjId, studentId] },
-            status: 'active'
-          });
-          if (activeEnr && typeof activeEnr.percentCompleted === 'number') {
-            courseProgress = Number(activeEnr.percentCompleted.toFixed(2));
+      try {
+        const mainEnrollCol = await this.db.getCollection<any>('enrollments');
+        const progressCol = await this.db.getCollection<any>('progress');
+        const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+
+        const activeEnr = await mainEnrollCol.findOne({
+          userId: { $in: [userObjId, studentId] },
+          status: 'active',
+        });
+
+        if (activeEnr) {
+          courseAccepted = 'accepted';
+          if (typeof activeEnr.percentCompleted === 'number') {
+            courseProgress = Math.max(courseProgress, Number(activeEnr.percentCompleted.toFixed(2)));
           }
-        } catch (_) {}
-      }
+        }
+
+        const progDoc = await progressCol.findOne({
+          userId: { $in: [userObjId, studentId] },
+        });
+
+        if (progDoc && typeof progDoc.percentCompleted === 'number') {
+          courseProgress = Math.max(courseProgress, Number(progDoc.percentCompleted.toFixed(2)));
+        }
+      } catch (_) {}
+
 
       roster.push({
         studentId,

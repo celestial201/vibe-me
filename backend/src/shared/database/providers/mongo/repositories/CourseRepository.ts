@@ -1,4 +1,5 @@
 import { GLOBAL_TYPES } from '#root/types.js';
+import { safeObjectId } from '#root/shared/functions/idNormalizer.js';
 import { ICourseRepository } from '#shared/database/interfaces/ICourseRepository.js';
 import {
   courseVersionStatus,
@@ -148,12 +149,14 @@ export class CourseRepository implements ICourseRepository {
       return null;
     }
   }
+
   async read(id: string, session?: ClientSession): Promise<ICourse | null> {
     await this.init();
+    if (!id) return null;
+    const objId = safeObjectId(id);
+    const query = objId ? { _id: objId } : { $or: [{ _id: id as any }, { id: id as any }] };
     const course = await this.courseCollection.findOne(
-      {
-        _id: new ObjectId(id),
-      },
+      query as any,
       { session },
     );
     if (course) {

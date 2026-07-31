@@ -18,13 +18,18 @@ import { CLASSROOM_TYPES } from '../types.js';
 import { ClassroomService } from '../services/ClassroomService.js';
 import {
   AssignCourseBody,
+  BatchAssignCourseBody,
+  BatchAssignCourseResponse,
   ClassroomCourseResponse,
+  ClassroomCourseStudentResponse,
   ClassroomMemberResponse,
   ClassroomResponse,
   CreateClassroomBody,
   JoinClassroomBody,
+  StudentProgressItem,
   UpdateClassroomBody,
 } from '../classes/validators/ClassroomValidators.js';
+
 
 // Param helper
 class ClassroomIdParams {
@@ -89,6 +94,15 @@ export class ClassroomController {
     return this.classroomService.updateClassroom(params.id, user._id?.toString() ?? '', body);
   }
 
+  @OpenAPI({ summary: 'Regenerate classroom 6-character join code (Teacher)' })
+  @Post('/:id/reset-code')
+  async resetCode(
+    @Params() params: ClassroomIdParams,
+    @CurrentUser() user: IUser,
+  ): Promise<ClassroomResponse> {
+    return this.classroomService.resetJoinCode(params.id, user._id?.toString() ?? '');
+  }
+
   @OpenAPI({ summary: 'Delete a classroom (cascades members and courses)' })
   @Delete('/:id')
   @HttpCode(204)
@@ -117,21 +131,33 @@ export class ClassroomController {
     @Body() body: JoinClassroomBody,
     @CurrentUser() user: IUser,
   ): Promise<ClassroomResponse> {
-    return this.classroomService.joinClassroom(body.code, user._id?.toString() ?? '');
+    const studentId = (user?._id || (user as any)?.id)?.toString() ?? '';
+    return this.classroomService.joinClassroom(body.code, studentId);
   }
+
 
   // ── Courses ───────────────────────────────────────────────────────────────
 
-  @OpenAPI({ summary: 'List courses assigned to a classroom' })
+  @OpenAPI({ summary: 'Batch assign a published course to multiple classrooms' })
+  @Post('/course-assignments')
+  @HttpCode(200)
+  async batchAssignCourse(
+    @Body() body: BatchAssignCourseBody,
+    @CurrentUser() user: IUser,
+  ): Promise<BatchAssignCourseResponse> {
+    return this.classroomService.batchAssignCourse(user._id?.toString() ?? '', body);
+  }
+
+  @OpenAPI({ summary: 'List courses assigned to a classroom with student progress details' })
   @Get('/:id/courses')
   async getCourses(
     @Params() params: ClassroomIdParams,
     @CurrentUser() user: IUser,
-  ): Promise<ClassroomCourseResponse[]> {
-    return this.classroomService.getClassroomCourses(params.id, user._id?.toString() ?? '');
+  ): Promise<ClassroomCourseStudentResponse[]> {
+    return this.classroomService.getStudentClassroomCoursesWithDetails(params.id, user._id?.toString() ?? '');
   }
 
-  @OpenAPI({ summary: 'Assign a course to a classroom' })
+  @OpenAPI({ summary: 'Assign a course to a single classroom' })
   @Post('/:id/courses')
   @HttpCode(201)
   async assignCourse(
@@ -155,4 +181,32 @@ export class ClassroomController {
       user._id?.toString() ?? '',
     );
   }
+
+  @OpenAPI({ summary: 'Student starts an assigned classroom course' })
+  @Post('/:id/courses/:courseId/start')
+  @HttpCode(200)
+  async startCourse(
+    @Params() params: ClassroomCourseParams,
+    @CurrentUser() user: IUser,
+  ) {
+    return this.classroomService.startClassroomCourse(
+      params.id,
+      user._id?.toString() ?? '',
+      params.courseId,
+    );
+  }
+
+  @OpenAPI({ summary: 'Teacher tracks classroom student progress for an assigned course' })
+  @Get('/:id/courses/:courseId/progress')
+  async getCourseProgress(
+    @Params() params: ClassroomCourseParams,
+    @CurrentUser() user: IUser,
+  ): Promise<StudentProgressItem[]> {
+    return this.classroomService.getClassroomCourseProgress(
+      params.id,
+      user._id?.toString() ?? '',
+      params.courseId,
+    );
+  }
 }
+

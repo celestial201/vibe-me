@@ -3,6 +3,7 @@ import {
   Authorized,
   Body,
   CurrentUser,
+  Delete,
   Get,
   HttpCode,
   JsonController,
@@ -282,15 +283,28 @@ export class ClassroomLmsController {
     return this.lmsService.pushCourseToClassroom(params.id, instructorId, body);
   }
 
+  @OpenAPI({ summary: 'Remove a course from classroom' })
+  @Delete('/:id/courses/:courseId')
+  async removeCourse(
+    @Params() params: { id: string; courseId: string },
+    @CurrentUser() user: IUser,
+  ) {
+    const instructorId = user._id?.toString() ?? '';
+    return this.lmsService.removeCourse(params.id, instructorId, params.courseId);
+  }
+
   @OpenAPI({ summary: 'Get full student analytics roster table (Teacher)' })
   @Get('/:id/students/analytics')
   async getStudentAnalyticsRoster(
     @Params() params: ClassroomIdParams,
     @CurrentUser() user: IUser,
   ): Promise<StudentAnalyticsRosterDTO[]> {
-    const instructorId = user._id?.toString() ?? '';
-    return this.lmsService.getStudentAnalyticsRoster(params.id, instructorId);
+    const instructorId = (user?._id || (user as any)?.id)?.toString() ?? '';
+    const roster = await this.lmsService.getStudentAnalyticsRoster(params.id, instructorId);
+    console.log('Roster Array Length:', roster.length);
+    return roster;
   }
+
 
   @OpenAPI({ summary: 'Student accepts course enrollment' })
   @Post('/:id/courses/:courseId/accept')

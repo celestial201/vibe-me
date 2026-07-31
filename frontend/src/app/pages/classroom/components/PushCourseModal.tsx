@@ -12,6 +12,29 @@ interface Props {
   onClose: () => void;
 }
 
+const getCourseId = (course: any, index: number): string => {
+  if (!course) return `course-${index}`;
+  if (typeof course._id === 'string' && course._id !== '[object Object]') return course._id;
+  if (typeof course.id === 'string' && course.id !== '[object Object]') return course.id;
+  if (typeof course.courseId === 'string' && course.courseId !== '[object Object]') return course.courseId;
+
+  const rawId = course._id ?? course.id ?? course.courseId;
+  if (rawId && typeof rawId === 'object') {
+    if (rawId._id) return String(rawId._id);
+    if (rawId.$oid) return String(rawId.$oid);
+    if (typeof rawId.toString === 'function') {
+      const str = rawId.toString();
+      if (str && str !== '[object Object]') return str;
+    }
+  }
+
+  if (rawId) {
+    const str = String(rawId);
+    if (str && str !== '[object Object]') return str;
+  }
+  return `course-${index}`;
+};
+
 export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
   const { data: courses, isLoading } = useGetMyVibeCourses();
   const pushMutation = usePushCourseToClassroom(classroomId);
@@ -60,15 +83,19 @@ export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
                   <SelectValue placeholder="Choose a course to push..." className="text-slate-900 dark:text-slate-100 font-semibold" />
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50">
-                  {courses.map((c) => (
-                    <SelectItem
-                      key={c._id}
-                      value={c._id}
-                      className="text-slate-900 dark:text-slate-100 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100 cursor-pointer"
-                    >
-                      {c.name || c.title || 'Untitled Course'}
-                    </SelectItem>
-                  ))}
+                  {courses.map((course: any, idx: number) => {
+                    const uniqueId = getCourseId(course, idx);
+                    const courseName = typeof course.name === 'string' ? course.name : (typeof course.title === 'string' ? course.title : 'Untitled Course');
+                    return (
+                      <SelectItem
+                        key={uniqueId}
+                        value={uniqueId}
+                        className="text-slate-900 dark:text-slate-100 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100 cursor-pointer"
+                      >
+                        {courseName}
+                      </SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             )}

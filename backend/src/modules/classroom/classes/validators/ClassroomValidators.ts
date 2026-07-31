@@ -37,6 +37,10 @@ export class UpdateClassroomBody {
   description?: string;
 
   @IsOptional()
+  @IsString()
+  streamPostingPermission?: 'everyone' | 'teacher_only';
+
+  @IsOptional()
   @IsDateString()
   start_date?: string;
 
@@ -74,6 +78,7 @@ export class ClassroomResponse {
   @Expose() code: string;
   @Expose() instructorId: string;
   @Expose() status: string;
+  @Expose() streamPostingPermission?: 'everyone' | 'teacher_only';
   @Expose() @Type(() => Date) start_date?: Date;
   @Expose() @Type(() => Date) end_date?: Date;
   @Expose() @Type(() => Date) createdAt: Date;
@@ -103,3 +108,44 @@ export class ClassroomCourseResponse {
   @Expose() versionName?: string;
   @Expose() @Type(() => Date) assignedAt: Date;
 }
+
+export class BatchAssignCourseBody {
+  @IsString()
+  @IsNotEmpty()
+  @JSONSchema({ description: 'Course ID to assign', example: '60d5ec49b3f1c8e4a8f8b8c1' })
+  courseId: string;
+
+  @IsNotEmpty()
+  @JSONSchema({ description: 'Array of Classroom IDs', example: ['60d5ec49b3f1c8e4a8f8b8c1'] })
+  classroomIds: string[];
+}
+
+export class BatchAssignCourseResponse {
+  @Expose() success: boolean;
+  @Expose() assigned: Array<{ classroomId: string; courseId: string; versionId: string }>;
+  @Expose() alreadyAssigned: Array<{ classroomId: string; courseId: string }>;
+  @Expose() failed: Array<{ classroomId: string; reason: string }>;
+}
+
+export class ClassroomCourseStudentResponse {
+  @Expose() _id?: string;
+  @Expose() classroomId: string;
+  @Expose() courseId: string;
+  @Expose() versionId: string;
+  @Expose() courseName?: string;
+  @Expose() courseDescription?: string;
+  @Expose() versionName?: string;
+  @Expose() @Type(() => Date) assignedAt: Date;
+  @Expose() isEnrolled: boolean;
+  @Expose() progressPercentage: number;
+}
+
+export class StudentProgressItem {
+  @Expose() studentId: string;
+  @Expose() studentName: string;
+  @Expose() studentEmail: string;
+  @Expose() isEnrolled: boolean;
+  @Expose() progressPercentage: number;
+  @Expose() completedItemsCount: number;
+}
+

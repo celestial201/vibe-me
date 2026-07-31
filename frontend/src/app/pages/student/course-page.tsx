@@ -486,20 +486,27 @@ export default function CoursePage() {
   // Log proctoring settings when loaded (only logs once when data is available)
   useEffect(() => {
     async function fetch() {
-      const data = await getSettings(COURSE_ID, VERSION_ID);
-      setProctoringData(data);
-      const allProctorsDisabled =
-        data.settings.proctors.detectors.every(
-          (detector: any) => detector.settings.enabled === false
-        );
-      if (allProctorsDisabled) {
-        setShowProctorDialog(false);
-        setAllProctorsDisabled(true);
-        setReadyToDetect(true);
+      try {
+        if (!COURSE_ID || !VERSION_ID) return;
+        const data = await getSettings(COURSE_ID, VERSION_ID);
+        if (data && data.settings) {
+          setProctoringData(data);
+          const allProctorsDisabled =
+            data.settings?.proctors?.detectors?.every(
+              (detector: any) => detector.settings?.enabled === false
+            ) ?? false;
+          if (allProctorsDisabled) {
+            setShowProctorDialog(false);
+            setAllProctorsDisabled(true);
+            setReadyToDetect(true);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load proctoring settings:', err);
       }
     }
     fetch();
-  }, []);
+  }, [COURSE_ID, VERSION_ID]);
 
   // Update section items when data is loaded
   useEffect(() => {

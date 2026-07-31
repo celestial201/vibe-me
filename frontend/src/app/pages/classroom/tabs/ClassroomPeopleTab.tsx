@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { useGetClassroomStudents } from '@/hooks/classroom-hooks';
-import { useGetStudentInsights, useGetStudentAnalyticsRoster, useClassroomSocket } from '@/hooks/classroom-lms-hooks';
+import { useGetStudentInsights, useGetStudentAnalyticsRoster, useClassroomSocket, useCreateAssignment } from '@/hooks/classroom-lms-hooks';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Users, User, TrendingUp, AlertCircle, CheckCircle, BarChart3, BookOpen, Send, Flag, HelpCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Users, User, TrendingUp, AlertCircle, CheckCircle, BarChart3, BookOpen, Send, Flag, HelpCircle, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { PushCourseModal } from '../components/PushCourseModal';
 
@@ -21,8 +24,31 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
   const { data: simpleStudents, isLoading: isSimpleLoading } = useGetClassroomStudents(classroomId);
   const { data: roster, isLoading: isRosterLoading } = useGetStudentAnalyticsRoster(classroomId);
 
+  const createAssignmentMutation = useCreateAssignment(classroomId);
+
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [isPushModalOpen, setIsPushModalOpen] = useState<boolean>(false);
+  const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [points, setPoints] = useState(100);
+  const [dueDate, setDueDate] = useState('');
+  const [assignmentFiles, setAssignmentFiles] = useState<File[]>([]);
+
+  const handleCreateAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !dueDate) return;
+    await createAssignmentMutation.mutateAsync({
+      data: { title, description, points, due_date: dueDate },
+      files: assignmentFiles,
+    });
+    setIsCreateOpen(false);
+    setTitle('');
+    setDescription('');
+    setPoints(100);
+    setDueDate('');
+    setAssignmentFiles([]);
+  };
 
   const isLoading = isInstructor ? isRosterLoading : isSimpleLoading;
 
@@ -41,22 +67,95 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
         </div>
 
         {isInstructor && (
-          <Button size="sm" onClick={() => setIsPushModalOpen(true)}>
-            <Send className="w-4 h-4 mr-1.5" />
-            Push Course to Classroom
-          </Button>
+          <div className="flex items-center gap-3">
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  Create Assignment
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Create New Assignment</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleCreateAssignment} className="space-y-4 pt-2">
+                  <div>
+                    <label className="text-xs font-medium">Title *</label>
+                    <Input
+                      required
+                      placeholder="e.g. Assignment 1: Neural Networks"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Instructions / Description</label>
+                    <Textarea
+                      placeholder="Describe task guidelines..."
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium">Points</label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={points}
+                        onChange={(e) => setPoints(Number(e.target.value))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium">Due Date & Time *</label>
+                      <Input
+                        type="datetime-local"
+                        required
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium">Attachments (PDF/Images/DOCX)</label>
+                    <Input
+                      type="file"
+                      multiple
+                      onChange={(e) => e.target.files && setAssignmentFiles(Array.from(e.target.files))}
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={createAssignmentMutation.isPending}>
+                      Publish Assignment
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            <Button size="sm" onClick={() => setIsPushModalOpen(true)}>
+              <Send className="w-4 h-4 mr-1.5" />
+              Push Course to Classroom
+            </Button>
+          </div>
         )}
       </div>
+
 
       <Card className="border border-border/60 bg-card shadow-xs">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-semibold">
-            Enrolled Students ({isInstructor ? roster?.length || 0 : simpleStudents?.length || 0})
+            {isInstructor ? `Enrolled Students (${roster?.length || 0})` : `Classmates (${roster?.length || 0})`}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0 sm:p-6">
-          {isLoading ? (
-            <div className="text-center py-12 text-sm text-muted-foreground">Loading student roster and analytics...</div>
+          {isRosterLoading ? (
+            <div className="text-center py-12 text-sm text-muted-foreground">Loading roster...</div>
           ) : isInstructor ? (
             /* Teacher Detailed Student Analytics Roster Table */
             !roster || roster.length === 0 ? (
@@ -93,22 +192,23 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
                         </TableCell>
                         <TableCell>
                           <Badge
-                            variant={s.courseAccepted === 'accepted' ? 'default' : 'secondary'}
-                            className={
-                              s.courseAccepted === 'accepted'
-                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white text-[10px]'
-                                : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 text-[10px]'
-                            }
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px]"
                           >
-                            {s.courseAccepted === 'accepted' ? 'Accepted' : 'Pending Invitation'}
+                            Active Cohort Student
                           </Badge>
                         </TableCell>
-                        <TableCell className="min-w-[130px]">
+                        <TableCell className="min-w-[150px]">
                           <div className="space-y-1">
-                            <div className="flex justify-between text-[10px] font-semibold text-muted-foreground">
-                              <span>{s.courseProgress}%</span>
+                            <div className="flex justify-between items-center text-[10px] font-semibold text-muted-foreground">
+                              <span>{Math.round(s.courseProgress || 0)}%</span>
+                              {s.courseProgress >= 100 && (
+                                <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 flex items-center gap-0.5">
+                                  <CheckCircle className="w-2.5 h-2.5" />
+                                  Completed ■
+                                </Badge>
+                              )}
                             </div>
-                            <Progress value={s.courseProgress} className="h-1.5 w-full bg-muted" />
+                            <Progress value={s.courseProgress || 0} className="h-1.5 w-full bg-muted" />
                           </div>
                         </TableCell>
                         <TableCell>
@@ -143,33 +243,42 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
               </div>
             )
           ) : (
-            /* Student View Roster List */
-            !simpleStudents || simpleStudents.length === 0 ? (
+            /* Student View Privacy-Safe Classmate Table (2 Columns Only: Classmate Name & Joining Date) */
+            !roster || roster.length === 0 ? (
               <div className="text-center py-12 border border-dashed rounded-lg text-sm text-muted-foreground m-4">
                 No classmates enrolled yet.
               </div>
             ) : (
-              <div className="divide-y divide-border/40 px-4">
-                {simpleStudents.map((m) => (
-                  <div key={m._id} className="py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium text-xs">
-                        <User className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">{m.studentId || 'Student'}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Joined {format(new Date(m.joinedAt), 'MMM d, yyyy')}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Classmate Name</TableHead>
+                      <TableHead>Joining Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {roster.map((c) => (
+                      <TableRow key={c.studentId}>
+                        <TableCell className="font-medium flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0">
+                            {(c.classmateName || c.name || 'C')?.charAt(0)}
+                          </div>
+                          <span>{c.classmateName || c.name || 'Classmate'}</span>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {c.joiningDate ? format(new Date(c.joiningDate), 'MMM d, yyyy') : 'N/A'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             )
           )}
         </CardContent>
       </Card>
+
 
       {/* Push Course Modal */}
       {isInstructor && (

@@ -142,9 +142,19 @@ export class ClassroomRepository implements IClassroomRepository {
       classroomId: toObjectId(member.classroomId as string),
       studentId: toObjectId(member.studentId as string),
     };
-    const result = await this.members.insertOne(doc as any);
-    return { ...member, _id: result.insertedId.toString() };
+    try {
+      const result = await this.members.insertOne(doc as any);
+      return { ...member, _id: result.insertedId.toString() };
+    } catch (err: any) {
+      if (err?.code === 11000) {
+        const existing = await this.findMember(member.classroomId?.toString() ?? '', member.studentId?.toString() ?? '');
+        if (existing) return existing;
+      }
+
+      throw err;
+    }
   }
+
 
   async findMember(classroomId: string, studentId: string): Promise<IClassroomMember | null> {
     await this.init();
@@ -249,9 +259,15 @@ export class ClassroomRepository implements IClassroomRepository {
 
   async findCourseAssignment(classroomId: string, courseId: string): Promise<IClassroomCourse | null> {
     await this.init();
+    const cObjId = ObjectId.isValid(classroomId) ? new ObjectId(classroomId) : classroomId;
+    const crsObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
     const doc = await this.courses.findOne({
-      classroomId: toObjectId(classroomId) as any,
-      courseId: toObjectId(courseId) as any,
+      $or: [
+        { classroomId: cObjId as any, courseId: crsObjId as any },
+        { classroomId: classroomId as any, courseId: courseId as any },
+        { classroomId: cObjId as any, courseId: courseId as any },
+        { classroomId: classroomId as any, courseId: crsObjId as any },
+      ],
     });
     if (!doc) return null;
     return this._mapCourse(doc);
@@ -268,10 +284,42 @@ export class ClassroomRepository implements IClassroomRepository {
 
   async removeCourse(classroomId: string, courseId: string): Promise<void> {
     await this.init();
-    await this.courses.deleteOne({
-      classroomId: toObjectId(classroomId) as any,
-      courseId: toObjectId(courseId) as any,
+    const cObj = toObjectId(classroomId);
+    const crObj = toObjectId(courseId);
+    
+    // Delete matching course assignments from classroom_courses
+    await this.courses.deleteMany({
+      $and: [
+        {
+          $or: [
+            { classroomId: cObj as any },
+            { classroomId: classroomId as any },
+            { classroom_id: cObj as any },
+            { classroom_id: classroomId as any },
+          ],
+        },
+        {
+          $or: [
+            { courseId: crObj as any },
+            { courseId: courseId as any },
+            { course_id: crObj as any },
+            { course_id: courseId as any },
+          ],
+        },
+      ],
     });
+
+    // Also clean up any legacy course-0 dummy assignments
+    try {
+      await this.courses.deleteMany({
+        $or: [
+          { courseId: 'course-0' },
+          { course_id: 'course-0' },
+          { courseId: /^course-\d+$/ },
+          { course_id: /^course-\d+$/ },
+        ],
+      });
+    } catch (_) {}
   }
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────

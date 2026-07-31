@@ -224,19 +224,19 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
               </div>
             </form>
           ) : (
-            /* Student View */
+            /* Student View & Journal Submission */
             <div className="space-y-4 pt-2 text-sm">
               <div>
                 <h4 className="font-semibold text-foreground text-sm">
-                  {selectedDay?.journal?.title || 'No Topic Title Set'}
+                  {selectedDay?.journal?.title || `Day ${selectedDay?.day_number} Journal Prompt`}
                 </h4>
                 <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">
-                  {selectedDay?.journal?.journal_entry || 'No specific journal instructions uploaded for this day.'}
+                  {selectedDay?.journal?.journal_entry || 'Complete your daily learning reflection and notes below.'}
                 </p>
               </div>
 
               {selectedDay?.journal?.content_link && (
-                <div className="pt-2">
+                <div className="pt-1">
                   <a
                     href={selectedDay.journal.content_link}
                     target="_blank"
@@ -244,27 +244,62 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
                     className="inline-flex items-center gap-1.5 text-xs text-primary underline font-medium hover:text-primary/80"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
-                    Open Resource Link
+                    Open Reference Link
                   </a>
                 </div>
               )}
 
+              <div className="space-y-3 pt-2 border-t border-border/40">
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Your Reflections & Code Snippets</label>
+                  <Textarea
+                    placeholder="Write your daily journal entry, key takeaways, and reflections..."
+                    value={journalEntry}
+                    onChange={(e) => setJournalEntry(e.target.value)}
+                    rows={4}
+                    className="text-xs resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Attachment / Project Link (Optional)</label>
+                  <Input
+                    type="url"
+                    placeholder="https://github.com/my-repo or Drive link..."
+                    value={contentLink}
+                    onChange={(e) => setContentLink(e.target.value)}
+                    className="text-xs h-8"
+                  />
+                </div>
+              </div>
+
               <div className="flex justify-between items-center pt-3 border-t border-border/40">
-                {selectedDay && !completedDays.includes(selectedDay.day_number) ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    onClick={handleMarkFilled}
-                    disabled={markCompleteMutation.isPending}
-                  >
-                    {markCompleteMutation.isPending ? 'Marking...' : 'Mark as Filled'}
-                  </Button>
-                ) : (
-                  <Badge variant="outline" className="text-emerald-600 border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30 text-xs">
-                    ✓ Filled
-                  </Badge>
-                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 text-xs"
+                  onClick={async () => {
+                    if (selectedDay) {
+                      if (journalEntry.trim() || contentLink.trim()) {
+                        await upsertJournalMutation.mutateAsync({
+                          dayNumber: selectedDay.day_number,
+                          data: {
+                            title: title || `Day ${selectedDay.day_number} Reflection`,
+                            content_link: contentLink,
+                            journal_entry: journalEntry,
+                          },
+                        });
+                      }
+                      await markCompleteMutation.mutateAsync(selectedDay.day_number);
+                      setSelectedDay(null);
+                    }
+                  }}
+                  disabled={markCompleteMutation.isPending || upsertJournalMutation.isPending}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {completedDays.includes(selectedDay?.day_number || 0) ? 'Update & Save Entry' : 'Submit & Mark Complete'}
+                </Button>
+
                 <Button variant="outline" size="sm" onClick={() => setSelectedDay(null)}>
                   Close
                 </Button>

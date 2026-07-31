@@ -1142,6 +1142,7 @@ export interface IClassroom {
   code: string;           // unique 6-char alphanumeric join code
   instructorId: ID;
   status: 'active' | 'archived';
+  streamPostingPermission?: 'everyone' | 'teacher_only';
   start_date?: Date;
   end_date?: Date;
   internship_start_date?: Date;
@@ -1192,9 +1193,12 @@ export interface IClassroomAnnouncement {
   author_id: ID;
   content: string;
   type?: 'text' | 'assignment' | 'course_invitation';
+  referenceId?: ID;
   metadata?: {
     course_id?: ID;
+    courseId?: ID;
     course_title?: string;
+    courseTitle?: string;
     course_thumbnail?: string;
   };
   attachments?: string[];

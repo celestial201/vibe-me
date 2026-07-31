@@ -46,11 +46,13 @@ import {
   useGetClassroomCourses,
   useAssignCourse,
   useRemoveCourse,
+  useGetClassroomCourseProgress,
 } from '@/hooks/classroom-hooks'
 import { useUserEnrollments, useCourseEnrollmentsStats } from '@/hooks/hooks'
 import { useAuthStore } from '@/store/auth-store'
 import { bufferToHex } from '@/utils/helpers'
 import type { ClassroomCourseDTO } from '@/services/classroom-api'
+
 
 // ── CopyCode button ──────────────────────────────────────────────────────────
 
@@ -98,7 +100,84 @@ function CourseStatChips({ courseId, versionId }: { courseId: string; versionId:
   )
 }
 
+// ── Classroom Course Progress List ─────────────────────────────────────────────
+
+function ClassroomCourseProgressList({ classroomId, courseId }: { classroomId: string; courseId: string }) {
+  const { data: progressList = [], isLoading } = useGetClassroomCourseProgress(classroomId, courseId)
+  const [expanded, setExpanded] = useState(false)
+
+  if (isLoading) return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mt-2" />
+
+  const startedCount = progressList.filter((s) => s.isEnrolled).length
+
+  return (
+    <div className="mt-3 pt-3 border-t space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs">
+            {progressList.length} Student{progressList.length !== 1 ? 's' : ''}
+          </Badge>
+          <Badge variant="secondary" className="text-xs bg-amber-500/10 text-amber-600 border-amber-500/20">
+            {startedCount} Started
+          </Badge>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)} className="text-xs gap-1 h-7">
+          {expanded ? 'Hide Progress' : 'View Student Progress'}
+        </Button>
+      </div>
+
+      {expanded && (
+        <div className="border rounded-lg overflow-hidden mt-2 bg-muted/30">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="text-xs">Student</TableHead>
+                <TableHead className="text-xs">Status</TableHead>
+                <TableHead className="text-xs">Progress</TableHead>
+                <TableHead className="text-xs text-right">Items Completed</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {progressList.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
+                    No students in classroom.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                progressList.map((item) => (
+                  <TableRow key={item.studentId}>
+                    <TableCell className="text-xs font-medium">
+                      <div>{item.studentName}</div>
+                      <div className="text-[10px] text-muted-foreground">{item.studentEmail}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={item.isEnrolled ? 'default' : 'secondary'}
+                        className={item.isEnrolled ? 'bg-emerald-600 text-[10px]' : 'text-[10px]'}
+                      >
+                        {item.isEnrolled ? 'Enrolled' : 'Not Started'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs font-bold">
+                      {item.progressPercentage}%
+                    </TableCell>
+                    <TableCell className="text-xs text-right font-mono">
+                      {item.completedItemsCount}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Assign Courses Drawer ────────────────────────────────────────────────────
+
 
 interface AssignDrawerProps {
   classroomId: string
@@ -431,9 +510,11 @@ export default function ClassroomDetailPage() {
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
+                  <ClassroomCourseProgressList classroomId={id} courseId={c.courseId} />
                 </Card>
               ))}
             </div>
+
           )}
         </TabsContent>
       </Tabs>
