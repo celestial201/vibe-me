@@ -27,14 +27,16 @@ import HpSystemDashboard from "../pages/teacher/hp-system/CohortDetails";
 import StudentLedgerPage from "../pages/teacher/hp-system/student-ledger";
 import StudentSubmissionsPage from "../pages/teacher/hp-system/student-submissions";
 import SubmissionDetailsPage from "../pages/teacher/hp-system/submission-details";
+import ArenaMonitorPage from "@/app/pages/teacher/ArenaMonitorPage";
+
 const teacherRoutes: RouteObject = {
   path: "/teacher",
   element: <TeacherLayout />,
   children: [
-    // {
-    //   path: "dashboard",
-    //   element: <Dashboard />,
-    // },
+    {
+      path: "arena-monitor",
+      element: <ArenaMonitorPage />,
+    },
     {path:"ejection-policies",element: <EjectionPoliciesPage />,},
     {
       path: "profile",

@@ -288,9 +288,11 @@ export default function StudentCourses() {
                       "grid gap-6 mt-2",
                       viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
                     )}>
-                      {pendingEnrollments.map((enrollment, index) =>
-                        renderEnrollmentCard(enrollment, index, false)
-                      )}
+                      {pendingEnrollments.map((enrollment, index) => (
+                        <div key={enrollment?._id || enrollment?.courseId || `pending-${index}`}>
+                          {renderEnrollmentCard(enrollment, index, false)}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -300,9 +302,11 @@ export default function StudentCourses() {
                     "grid gap-6",
                     viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
                   )}>
-                    {activeEnrollments.map((enrollment, index) =>
-                      renderEnrollmentCard(enrollment, index, isLoading)
-                    )}
+                    {activeEnrollments.map((enrollment, index) => (
+                      <div key={enrollment?._id || enrollment?.courseId || `active-${index}`}>
+                        {renderEnrollmentCard(enrollment, index, isLoading)}
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -339,17 +343,19 @@ export default function StudentCourses() {
                   viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
                 )}>
                   {publicCoursesData.courses.map((course: any, index: number) => (
-                    renderEnrollmentCard({
-                      courseId: course.courseId,
-                      courseVersionId: course.courseVersionId,
-                      course: {
-                        name: course.courseName,
-                        description: course.courseDescription,
-                        instructors: course.instructors
-                      },
-                      cohortId: course.cohortId,
-                      cohortName: course.cohortName,
-                    }, index, loadingPublic)
+                    <div key={course?._id || course?.courseId || `public-${index}`}>
+                      {renderEnrollmentCard({
+                        courseId: course.courseId,
+                        courseVersionId: course.courseVersionId,
+                        course: {
+                          name: course.courseName,
+                          description: course.courseDescription,
+                          instructors: course.instructors
+                        },
+                        cohortId: course.cohortId,
+                        cohortName: course.cohortName,
+                      }, index, loadingPublic)}
+                    </div>
                   ))}
                 </div>
                 <Pagination
@@ -381,9 +387,11 @@ export default function StudentCourses() {
                 "grid gap-6",
                 viewMode === 'grid' ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1"
               )}>
-                {completedEnrollments.map((enrollment, index) =>
-                  renderEnrollmentCard(enrollment, index, isLoading)
-                )}
+                {completedEnrollments.map((enrollment, index) => (
+                  <div key={enrollment?._id || enrollment?.courseId || `completed-${index}`}>
+                    {renderEnrollmentCard(enrollment, index, isLoading)}
+                  </div>
+                ))}
               </div>
             ) : (
               <EmptyState

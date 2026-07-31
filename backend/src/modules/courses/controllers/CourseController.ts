@@ -146,14 +146,16 @@ export class CourseController {
     @QueryParams() query: PublicCoursesQuery,
     @Ability(getCourseAbility) {user},
   ) {
-    const {page = 1, limit = 10, search = ''} = query;
-    const userId = user._id.toString();
+    const pageNum = Math.max(1, Number(query?.page) || 1);
+    const limitNum = Math.max(1, Number(query?.limit) || 10);
+    const searchStr = (query?.search || '').trim();
+    const userId = user._id?.toString() ?? '';
 
     const publicCourses = await this.courseService.getPublicCourses(
       userId,
-      page,
-      limit,
-      search,
+      pageNum,
+      limitNum,
+      searchStr,
     );
 
     return publicCourses;

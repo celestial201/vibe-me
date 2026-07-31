@@ -89,6 +89,42 @@ export default function ArenaDashboard() {
     }
   }, [enrollmentsData]);
 
+  // Real-time SSE Listener for Infinite Credits changes
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    try {
+      const rawBaseUrl = import.meta.env.VITE_BASE_URL ?? '';
+      const streamUrl = rawBaseUrl.endsWith('/api')
+        ? `${rawBaseUrl}/arena/events/stream`
+        : `${rawBaseUrl}/api/arena/events/stream`;
+      eventSource = new EventSource(streamUrl);
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'INFINITE_CREDITS_TOGGLED') {
+            setCourses(prev => prev.map(c => {
+              const cId = c.courseId || c.cohortId;
+              if (cId === data.courseId) {
+                return { ...c, infiniteArenaEnabled: data.infiniteArenaEnabled };
+              }
+              return c;
+            }));
+          }
+        } catch (e) {
+          console.error("SSE parse error", e);
+        }
+      };
+    } catch (err) {
+      console.warn("EventSource setup error", err);
+    }
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, []);
+
   const handleModeSelect = (selectedMode: ArenaMode) => {
     setMode(selectedMode);
     setPhase('course_selection');
@@ -244,20 +280,33 @@ export default function ArenaDashboard() {
                       return (
                         <div 
                           key={courseId}
-                          className={`arena-course-card ${isSelected ? 'selected' : ''}`}
+                          className={`arena-course-card relative ${isSelected ? 'selected' : ''}`}
                           onClick={() => {
                             setSelectedCourse(courseId);
                             setShowPvpOpponents(false);
                           }}
                         >
+                          {/* Glowing Red Infinity Icon (top right corner mirroring image_704739.png) */}
+                          {course.infiniteArenaEnabled && (
+                            <div 
+                              className="absolute top-3 right-3 bg-red-600 text-white font-black text-xl px-2.5 py-0.5 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.9)] border border-red-400 animate-pulse pointer-events-none z-20 flex items-center justify-center min-w-[32px] h-[32px]"
+                              title="Infinite Arena Credits Active"
+                            >
+                              ∞
+                            </div>
+                          )}
                           <div className="course-card-glow"></div>
                           <div className="course-card-content">
-                            <h4 className="text-xl font-bold text-white mb-2">{course.courseName}</h4>
+                            <h4 className="text-xl font-bold text-white mb-2 pr-8">{course.courseName}</h4>
                             <div className="flex items-center justify-between mt-2 gap-2 flex-wrap">
                               <span className={`inline-block px-2 py-1 ${(course.percentCompleted ?? 0) >= 30 ? 'bg-purple-500/20 text-purple-300' : 'bg-amber-500/20 text-amber-400'} text-xs font-bold rounded-md`}>
                                 Progress: {course.percentCompleted ?? 0}%
                               </span>
-                              {eligibility.availableCredits > 0 ? (
+                              {course.infiniteArenaEnabled ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-500/20 text-red-400 border border-red-500/40 text-xs font-black rounded-md animate-pulse">
+                                  ⚡ Infinite Credits
+                                </span>
+                              ) : eligibility.availableCredits > 0 ? (
                                 <span className="inline-block px-2 py-1 bg-emerald-500/20 text-emerald-300 text-xs font-bold rounded-md animate-pulse">
                                   🎉 {eligibility.availableCredits} Play Credit{eligibility.availableCredits === 1 ? '' : 's'}
                                 </span>
@@ -274,8 +323,8 @@ export default function ArenaDashboard() {
                               <div className="flex gap-1 justify-between">
                                 {MILESTONE_TIERS.map(tier => {
                                   const isCompleted = (course.completedMilestones || []).includes(tier.threshold);
-                                  const isActive = eligibility.activeTier && tier.threshold === eligibility.activeTier.threshold;
-                                  const isLocked = tier.threshold > (course.percentCompleted ?? 0);
+                                  const isActive = (eligibility.activeTier && tier.threshold === eligibility.activeTier.threshold) || course.infiniteArenaEnabled;
+                                  const isLocked = !course.infiniteArenaEnabled && (tier.threshold > (course.percentCompleted ?? 0));
 
                                   let badgeClass = "bg-slate-900/80 border-slate-800/80 text-slate-600 cursor-not-allowed";
                                   let label = `L${tier.level} ${tier.bait}HP`;
@@ -284,7 +333,9 @@ export default function ArenaDashboard() {
                                     badgeClass = "bg-slate-800 text-slate-400 border-slate-700 font-semibold cursor-not-allowed";
                                     label = `✓ L${tier.level} ${tier.bait}HP`;
                                   } else if (isActive) {
-                                    badgeClass = "bg-purple-950/90 border-purple-400 text-purple-200 shadow-[0_0_12px_rgba(168,85,247,0.5)] font-bold animate-pulse cursor-pointer hover:border-purple-300";
+                                    badgeClass = course.infiniteArenaEnabled
+                                      ? "bg-red-950/90 border-red-500 text-red-200 shadow-[0_0_12px_rgba(239,68,68,0.5)] font-bold animate-pulse cursor-pointer hover:border-red-400"
+                                      : "bg-purple-950/90 border-purple-400 text-purple-200 shadow-[0_0_12px_rgba(168,85,247,0.5)] font-bold animate-pulse cursor-pointer hover:border-purple-300";
                                     label = `L${tier.level} ${tier.bait}HP ACTIVE`;
                                   } else if (!isLocked) {
                                     badgeClass = "bg-slate-800/90 border-slate-700 text-slate-300 font-medium";
@@ -319,8 +370,16 @@ export default function ArenaDashboard() {
                 {selectedCourse && (() => {
                   const selectedCourseData = courses.find(c => (c.courseId || c.cohortId) === selectedCourse);
                   const currentProgress = selectedCourseData?.percentCompleted ?? 0;
-                  const isProgressInsufficient = currentProgress < 30;
+                  const isInfinite = selectedCourseData?.infiniteArenaEnabled ?? false;
+                  
+                  const eligibility = selectedCourseData?.eligibility || evaluateDynamicArenaState(currentProgress, selectedCourseData?.completedMilestones || []);
+                  const availableCredits = isInfinite ? 999 : (eligibility?.availableCredits ?? 0);
+                  
+                  const isProgressInsufficient = !isInfinite && currentProgress < 30;
+                  const isCreditsInsufficient = !isInfinite && availableCredits <= 0;
                   const isHpInsufficient = globalTotalHp < 50;
+
+                  const isButtonDisabled = isProgressInsufficient || isCreditsInsufficient || (isHpInsufficient && mode === 'pvc');
 
                   return (
                     <>
@@ -328,6 +387,11 @@ export default function ArenaDashboard() {
                         {isProgressInsufficient && (
                           <div className="text-amber-400 mb-3 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 text-center font-medium">
                             ⚠️ You must complete at least 30% of this course to play in the Arena. (Current Progress: {currentProgress}%)
+                          </div>
+                        )}
+                        {!isProgressInsufficient && isCreditsInsufficient && (
+                          <div className="text-amber-400 mb-3 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 text-center font-medium">
+                            ⚠️ You have 0 credits. Complete more course milestones (30%, 50%, 70%, 90%, 100%) to unlock Arena battles!
                           </div>
                         )}
                         {isHpInsufficient && (
@@ -339,7 +403,7 @@ export default function ArenaDashboard() {
                           <button 
                             onClick={handleEnterBattle} 
                             className="arena-btn-primary disabled:opacity-50 disabled:cursor-not-allowed text-xl py-4 px-12"
-                            disabled={isProgressInsufficient || (isHpInsufficient && mode === 'pvc')}
+                            disabled={isButtonDisabled}
                           >
                             <span>{mode === 'pvc' ? 'Enter Battle' : 'Find Opponent'}</span>
                           </button>

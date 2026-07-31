@@ -73,6 +73,10 @@ export class ArenaService {
       }
 
       const eligibility = evaluateArenaEligibility(progressPercent, completedMilestones);
+      const isInfinite = course?.infiniteArenaEnabled ?? false;
+      if (isInfinite) {
+        eligibility.availableCredits = 999;
+      }
 
       return {
         courseId: courseIdStr,
@@ -84,6 +88,7 @@ export class ArenaService {
         completedCount: completedCount,
         totalCount: totalCount,
         completedMilestones,
+        infiniteArenaEnabled: isInfinite,
         eligibility,
       };
     });
@@ -96,15 +101,22 @@ export class ArenaService {
       (e: any) => (e.courseId?.toString() === courseId || e.course?.toString() === courseId) && e.status === 'ACTIVE'
     );
 
+    const course = await this.courseRepo.read(courseId);
+    const isInfinite = course?.infiniteArenaEnabled ?? false;
+
     const percentCompleted = Number(enrollment?.percentCompleted ?? 0);
     const completedMilestones: number[] = enrollment?.arenaProgress?.completedMilestones || [];
 
     const eligibility = evaluateArenaEligibility(percentCompleted, completedMilestones);
+    if (isInfinite) {
+      eligibility.availableCredits = 999;
+    }
 
     return {
       percentCompleted,
       completedMilestones,
-      availableCredits: eligibility.availableCredits,
+      infiniteArenaEnabled: isInfinite,
+      availableCredits: isInfinite ? 999 : eligibility.availableCredits,
       activeTier: eligibility.activeTier,
       nextLockedTier: eligibility.nextLockedTier,
       unlockedTiers: eligibility.unlockedTiers,

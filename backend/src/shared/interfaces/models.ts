@@ -42,6 +42,7 @@ export interface ICourse {
   description: string;
   versions: ID[];
   instructors: ID[];
+  infiniteArenaEnabled?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
   isDeleted?: boolean;

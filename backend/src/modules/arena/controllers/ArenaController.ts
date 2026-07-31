@@ -1,7 +1,7 @@
-import { JsonController, Get, Post, Body, Req, Param, Authorized, CurrentUser } from 'routing-controllers';
+import { JsonController, Get, Post, Body, Req, Res, Param, Authorized, CurrentUser } from 'routing-controllers';
 import { inject, injectable } from 'inversify';
-import { ArenaService, BattleService } from '../services/index.js';
-import { Request } from 'express';
+import { ArenaService, BattleService, SseManager } from '../services/index.js';
+import { Request, Response } from 'express';
 
 @JsonController('/arena')
 @injectable()
@@ -10,6 +10,28 @@ export class ArenaController {
     @inject('ArenaService') private readonly arenaService: ArenaService,
     @inject('BattleService') private readonly battleService: BattleService
   ) {}
+
+  @Get('/events/stream')
+  public streamEvents(@Req() req: Request, @Res() res: Response) {
+    req.socket.setTimeout(0);
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.write('retry: 3000\n\n');
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', message: 'Arena Event Stream Established' })}\n\n`);
+
+    const sseManager = SseManager.getInstance();
+    sseManager.addClient(res);
+
+    req.on('close', () => {
+      sseManager.removeClient(res);
+    });
+
+    return res;
+  }
 
   @Get('/courses')
   @Authorized()
@@ -56,9 +78,21 @@ export class ArenaController {
   @Authorized()
   public async submitAnswer(
     @Param('battleId') battleId: string,
-    @Body() body: { cards: string[], powerUp?: string }
+    @Body() body: { cards: string[], powerUp?: string, powerUpSlotIndex?: number }
   ) {
-    return this.battleService.submitAnswer(battleId, body.cards, body.powerUp);
+    return this.battleService.submitAnswer(battleId, body.cards, body.powerUp, body.powerUpSlotIndex);
+  }
+
+  @Post('/battle/:battleId/extend')
+  @Authorized()
+  public async extendBattle(@Param('battleId') battleId: string) {
+    return this.battleService.extendBattle(battleId);
+  }
+
+  @Post('/battle/:battleId/conclude')
+  @Authorized()
+  public async concludeBattle(@Param('battleId') battleId: string) {
+    return this.battleService.concludeBattle(battleId);
   }
 
   @Get('/status/:courseId')

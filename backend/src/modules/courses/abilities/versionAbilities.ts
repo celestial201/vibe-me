@@ -49,6 +49,7 @@ export function setupCourseVersionAbilities(
                 // Same as an admin within their own versions, minus the
                 // destructive lifecycle actions, which stay admin-only.
                 can('manage', 'CourseVersion', versionBounded);
+                can(CourseVersionActions.Create, 'CourseVersion', { courseId: enrollment.courseId });
                 cannot(CourseVersionActions.Delete, 'CourseVersion', versionBounded);
                 cannot(CourseVersionActions.Archive, 'CourseVersion', versionBounded);
                 break;

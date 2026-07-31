@@ -783,16 +783,23 @@ export class ClassroomLmsService {
 
   async acceptCourseEnrollment(classroomId: string, studentId: string, courseId: string) {
     const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+    
+    const studentObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+    const classroomObjId = ObjectId.isValid(classroomId) ? new ObjectId(classroomId) : classroomId;
+    const courseObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
+    
     const enrollDoc = await enrollmentsCol.findOne({
-      student_id: studentId,
-      classroom_id: classroomId,
-      course_id: courseId,
+      student_id: { $in: [studentId, studentObjId] },
+      classroom_id: { $in: [classroomId, classroomObjId] },
+      course_id: { $in: [courseId, courseObjId] },
     });
 
-    await enrollmentsCol.updateOne(
-      { student_id: studentId, classroom_id: classroomId, course_id: courseId },
-      { $set: { accepted: true, acceptedAt: new Date(), status: 'accepted', push_status: 'accepted' } }
-    );
+    if (enrollDoc) {
+      await enrollmentsCol.updateOne(
+        { _id: enrollDoc._id },
+        { $set: { accepted: true, acceptedAt: new Date(), status: 'active', push_status: 'accepted', enrollmentStatus: 'active' } }
+      );
+    }
 
     let versionId = enrollDoc?.version_id;
     if (!versionId) {
@@ -830,6 +837,7 @@ export class ClassroomLmsService {
             accepted: true,
             enrollmentDate: new Date(),
             isDeleted: false,
+            classroomId: classroomId, // Save classroom origin for the UI
           },
           $setOnInsert: {
             percentCompleted: 0,

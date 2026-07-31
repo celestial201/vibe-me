@@ -772,6 +772,8 @@ export class EnrollmentService extends BaseService {
             policyReacknowledgementRequired:
               enr.policyReacknowledgementRequired ?? false,
             hpSystem,
+            classroomId: enr.classroomId?.toString(),
+            accepted: enr.accepted,
           };
         }
       }).filter(Boolean);
