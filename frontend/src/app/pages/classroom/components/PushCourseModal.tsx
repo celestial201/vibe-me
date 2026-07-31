@@ -12,8 +12,8 @@ interface Props {
   onClose: () => void;
 }
 
-const getCourseId = (course: any, index: number): string => {
-  if (!course) return `course-${index}`;
+const getCourseId = (course: any): string => {
+  if (!course) return '';
   if (typeof course._id === 'string' && course._id !== '[object Object]') return course._id;
   if (typeof course.id === 'string' && course.id !== '[object Object]') return course.id;
   if (typeof course.courseId === 'string' && course.courseId !== '[object Object]') return course.courseId;
@@ -32,7 +32,7 @@ const getCourseId = (course: any, index: number): string => {
     const str = String(rawId);
     if (str && str !== '[object Object]') return str;
   }
-  return `course-${index}`;
+  return '';
 };
 
 export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
@@ -84,7 +84,8 @@ export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
                 </SelectTrigger>
                 <SelectContent className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50">
                   {courses.map((course: any, idx: number) => {
-                    const uniqueId = getCourseId(course, idx);
+                    const uniqueId = getCourseId(course);
+                    if (!uniqueId) return null;
                     const courseName = typeof course.name === 'string' ? course.name : (typeof course.title === 'string' ? course.title : 'Untitled Course');
                     return (
                       <SelectItem
