@@ -152,12 +152,11 @@ export class CourseRepository implements ICourseRepository {
 
   async read(id: string, session?: ClientSession): Promise<ICourse | null> {
     await this.init();
+    if (!id) return null;
     const objId = safeObjectId(id);
-    if (!objId) return null;
+    const query = objId ? { _id: objId } : { $or: [{ _id: id as any }, { id: id as any }] };
     const course = await this.courseCollection.findOne(
-      {
-        _id: objId,
-      },
+      query as any,
       { session },
     );
     if (course) {

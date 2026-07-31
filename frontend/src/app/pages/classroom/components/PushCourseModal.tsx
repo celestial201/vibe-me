@@ -14,15 +14,23 @@ interface Props {
 
 const getCourseId = (course: any, index: number): string => {
   if (!course) return `course-${index}`;
-  const idVal = course._id ?? course.id ?? course.courseId;
-  if (typeof idVal === 'string' && idVal !== '[object Object]') return idVal;
-  if (idVal && typeof idVal === 'object') {
-    if (typeof idVal.toString === 'function') {
-      const str = idVal.toString();
-      if (str !== '[object Object]') return str;
+  if (typeof course._id === 'string' && course._id !== '[object Object]') return course._id;
+  if (typeof course.id === 'string' && course.id !== '[object Object]') return course.id;
+  if (typeof course.courseId === 'string' && course.courseId !== '[object Object]') return course.courseId;
+
+  const rawId = course._id ?? course.id ?? course.courseId;
+  if (rawId && typeof rawId === 'object') {
+    if (rawId._id) return String(rawId._id);
+    if (rawId.$oid) return String(rawId.$oid);
+    if (typeof rawId.toString === 'function') {
+      const str = rawId.toString();
+      if (str && str !== '[object Object]') return str;
     }
-    if (idVal._id) return String(idVal._id);
-    if (idVal.$oid) return String(idVal.$oid);
+  }
+
+  if (rawId) {
+    const str = String(rawId);
+    if (str && str !== '[object Object]') return str;
   }
   return `course-${index}`;
 };

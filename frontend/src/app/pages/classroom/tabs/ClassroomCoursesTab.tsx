@@ -11,6 +11,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { classroomApi } from '@/services/classroom-api';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { useCourseStore } from '@/store/course-store';
 
 interface Props {
   classroomId: string;
@@ -20,11 +21,24 @@ interface Props {
 export function ClassroomCoursesTab({ classroomId, isInstructor = false }: Props) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { setCurrentCourse } = useCourseStore();
   const { data: courses, isLoading } = useGetClassroomCourses(classroomId);
   const { data: enrollmentStatusList } = useGetStudentEnrollmentStatus(classroomId);
 
   const [isPushModalOpen, setIsPushModalOpen] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const handleOpenCourse = (courseId: string, versionId?: string) => {
+    setCurrentCourse({
+      courseId,
+      versionId: versionId || courseId,
+      moduleId: null,
+      sectionId: null,
+      itemId: null,
+      watchItemId: null,
+    });
+    navigate({ to: '/student/learn' });
+  };
 
   const handleRemoveCourse = async (courseId: string) => {
     if (!window.confirm('Are you sure you want to remove this course from the classroom?')) return;
@@ -143,7 +157,7 @@ export function ClassroomCoursesTab({ classroomId, isInstructor = false }: Props
                   <div className="flex items-center justify-between pt-1">
                     <Button
                       size="sm"
-                      onClick={() => navigate({ to: `/courses/${courseIdStr}` })}
+                      onClick={() => handleOpenCourse(courseIdStr, course.versionId)}
                       className="gap-1.5 text-xs"
                     >
                       <Play className="w-3.5 h-3.5" />
