@@ -298,13 +298,15 @@ function CourseInvitationStreamAction({
   const { data: statusList } = useGetStudentEnrollmentStatus(classroomId);
 
   const courseId =
-    announcement?.metadata?.courseId ||
-    announcement?.metadata?.course_id ||
-    announcement?.referenceId ||
-    announcement?.metadata?.course?._id ||
-    (typeof announcement?.metadata?.course === 'string' ? announcement.metadata.course : '') ||
-    (typeof rawCourseId === 'string' && rawCourseId ? rawCourseId : '') ||
-    extractFlatStringId(rawCourseId);
+    extractFlatStringId(announcement?.metadata?.courseId) ||
+    extractFlatStringId(announcement?.metadata?.course_id) ||
+    extractFlatStringId(announcement?.referenceId) ||
+    extractFlatStringId(announcement?.metadata?.course?._id) ||
+    (typeof announcement?.metadata?.course === 'string' && announcement.metadata.course !== '[object Object]'
+      ? announcement.metadata.course
+      : '') ||
+    extractFlatStringId(rawCourseId) ||
+    (statusList && statusList.length > 0 ? extractFlatStringId(statusList[0]?.courseId) : '');
 
   const statusDoc = statusList?.find((s) => {
     const sId = extractFlatStringId(s.courseId) || extractFlatStringId((s as any).course_id);
@@ -346,8 +348,12 @@ function CourseInvitationStreamAction({
           className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shrink-0 cursor-pointer shadow-xs"
           disabled={startMutation.isPending}
           onClick={() => {
-            if (courseId) {
-              startMutation.mutate(courseId);
+            const targetCourseId =
+              courseId ||
+              (statusList && statusList.length > 0 ? extractFlatStringId(statusList[0]?.courseId) : '');
+
+            if (targetCourseId) {
+              startMutation.mutate(targetCourseId);
             } else {
               toast.error('Course ID missing from invitation announcement.');
             }

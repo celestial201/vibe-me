@@ -24,7 +24,12 @@ export function ClassroomLayout() {
   const { data: currentClassroom } = useGetClassroom(classroomId);
   const [copied, setCopied] = useState(false);
 
-  const isInstructor = user?.role === 'teacher' || currentClassroom?.instructorId === (user?._id || user?.id);
+  const currentUserId = (user?._id || user?.id)?.toString() || '';
+  const isInstructor =
+    user?.role === 'teacher' ||
+    (Boolean(currentClassroom?.instructorId) &&
+      Boolean(currentUserId) &&
+      String(currentClassroom?.instructorId) === currentUserId);
 
   const handleCopyCode = () => {
     if (currentClassroom?.code) {

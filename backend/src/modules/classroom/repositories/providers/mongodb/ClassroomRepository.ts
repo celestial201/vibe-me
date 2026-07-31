@@ -259,9 +259,15 @@ export class ClassroomRepository implements IClassroomRepository {
 
   async findCourseAssignment(classroomId: string, courseId: string): Promise<IClassroomCourse | null> {
     await this.init();
+    const cObjId = ObjectId.isValid(classroomId) ? new ObjectId(classroomId) : classroomId;
+    const crsObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
     const doc = await this.courses.findOne({
-      classroomId: toObjectId(classroomId) as any,
-      courseId: toObjectId(courseId) as any,
+      $or: [
+        { classroomId: cObjId as any, courseId: crsObjId as any },
+        { classroomId: classroomId as any, courseId: courseId as any },
+        { classroomId: cObjId as any, courseId: courseId as any },
+        { classroomId: classroomId as any, courseId: crsObjId as any },
+      ],
     });
     if (!doc) return null;
     return this._mapCourse(doc);

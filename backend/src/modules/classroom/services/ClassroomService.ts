@@ -2,6 +2,7 @@ import { inject, injectable } from 'inversify';
 import { BadRequestError, ForbiddenError, NotFoundError, UnauthorizedError } from 'routing-controllers';
 import { CLASSROOM_TYPES } from '../types.js';
 import type { IClassroomRepository } from '../repositories/interfaces/IClassroomRepository.js';
+import { ObjectId } from 'mongodb';
 import {
   AssignCourseBody,
   BatchAssignCourseBody,
@@ -481,12 +482,31 @@ export class ClassroomService {
       throw new ForbiddenError('You are not a member of this classroom.');
     }
 
-    const assignment = await this.repo.findCourseAssignment(classroomId, courseId);
+    let assignment = await this.repo.findCourseAssignment(classroomId, courseId);
+    if (!assignment) {
+      const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+      const studentObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+      const courseObjId = ObjectId.isValid(courseId) ? new ObjectId(courseId) : courseId;
+      const cDoc = await enrollmentsCol.findOne({
+        student_id: { $in: [studentId, studentObjId] },
+        classroom_id: { $in: [classroomId, ObjectId.isValid(classroomId) ? new ObjectId(classroomId) : classroomId] },
+        course_id: { $in: [courseId, courseObjId] },
+      });
+      if (cDoc) {
+        assignment = {
+          classroomId,
+          courseId,
+          versionId: cDoc.version_id || courseId,
+          assignedAt: cDoc.enrolled_at || new Date(),
+        };
+      }
+    }
+
     if (!assignment) {
       throw new NotFoundError('Course is not assigned to this classroom.');
     }
 
-    const versionId = assignment.versionId.toString();
+    const versionId = assignment.versionId ? assignment.versionId.toString() : courseId;
 
     await this.enrollmentService.enrollUser(
       studentId,
