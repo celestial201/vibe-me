@@ -68,7 +68,12 @@ export function ClassroomLeaderboardTab({ classroomId }: Props) {
       0;
 
     // 3. Journal Completion (+10 pts per filled daily journal)
-    const journalPoints = completedJournals.length * 10;
+    const journalPoints =
+      typeof rosterDoc?.journalPoints === 'number'
+        ? rosterDoc.journalPoints
+        : typeof rosterDoc?.completedJournalsCount === 'number'
+        ? rosterDoc.completedJournalsCount * 10
+        : (completedJournals && completedJournals.length > 0 ? completedJournals.length * 10 : 0);
 
     const totalPoints = coursePoints + assignmentPoints + journalPoints;
 

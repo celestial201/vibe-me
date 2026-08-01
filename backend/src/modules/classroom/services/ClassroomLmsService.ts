@@ -876,6 +876,7 @@ export class ClassroomLmsService {
 
     const mainEnrollCol = await this.db.getCollection<any>('enrollment');
     const progressCol = await this.db.getCollection<any>('progress');
+    const journalSubmissionsCol = await this.db.getCollection<any>('classroom_journal_submissions');
 
     const roster: any[] = [];
 
@@ -911,7 +912,7 @@ export class ClassroomLmsService {
         };
       });
 
-      const [progDocs, enrDocs, memberEnrDocs] = await Promise.all([
+      const [progDocs, enrDocs, memberEnrDocs, journalDocs] = await Promise.all([
         progressCol.find({
           $or: [
             { userId: { $in: studentIdVariants } },
@@ -932,7 +933,26 @@ export class ClassroomLmsService {
             { studentId: { $in: studentIdVariants } },
           ],
         }).toArray().catch(() => []),
+        journalSubmissionsCol.find({
+          $and: [
+            {
+              $or: [
+                { student_id: { $in: studentIdVariants } },
+                { studentId: { $in: studentIdVariants } },
+              ],
+            },
+            {
+              $or: [
+                { classroom_id: { $in: classroomIdVariants } },
+                { classroomId: { $in: classroomIdVariants } },
+              ],
+            },
+            { is_completed: true },
+          ],
+        }).toArray().catch(() => []),
       ]);
+
+      const completedJournalsCount = journalDocs.length;
 
       const studentCourses: any[] = [];
       let maxProgress = 0;
@@ -1030,6 +1050,8 @@ export class ClassroomLmsService {
         completedCoursesCount,
         courses: studentCourses,
         submissionCount: studentSubs.length,
+        completedJournalsCount,
+        journalPoints: completedJournalsCount * 10,
         flaggedCount: 0,
         queriesCount: 0,
         submissionsList,
