@@ -177,6 +177,66 @@ export class ClassroomService {
         throw err;
       }
     }
+
+    // Auto-enroll new student into all previously assigned courses for this classroom
+    try {
+      const cId = classroom._id!.toString();
+      const classroomCoursesCol = await this.db.getCollection<any>('classroom_courses');
+      const assignedCourses = await classroomCoursesCol.find({
+        $or: [{ classroom_id: cId }, { classroomId: cId }],
+      }).toArray();
+
+      const classroomMemberEnrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
+      const studentObjId = safeObjectId(studentId) || studentId;
+
+      for (const ac of assignedCourses) {
+        const courseIdStr = String(ac.course_id || ac.courseId || '');
+        const rawVersionId = String(ac.version_id || ac.versionId || '');
+        if (!courseIdStr) continue;
+
+        const versionIdStr = await this._resolveVersionId(courseIdStr, rawVersionId);
+
+        try {
+          await this.enrollmentService.enrollUser(
+            studentId,
+            courseIdStr,
+            versionIdStr,
+            'STUDENT',
+            false,
+          );
+        } catch (eErr: any) {
+          if (!eErr?.message?.includes('already enrolled')) {
+            console.warn('Auto-enroll note in joinClassroom:', eErr?.message || eErr);
+          }
+        }
+
+        const courseObjId = safeObjectId(courseIdStr) || courseIdStr;
+        const versionObjId = safeObjectId(versionIdStr) || versionIdStr;
+
+        await classroomMemberEnrollmentsCol.updateOne(
+          {
+            classroom_id: cId,
+            student_id: studentObjId,
+            course_id: courseObjId,
+          },
+          {
+            $set: {
+              classroom_id: cId,
+              student_id: studentObjId,
+              course_id: courseObjId,
+              version_id: versionObjId,
+              status: 'active',
+              accepted: true,
+              enrolled_at: new Date(),
+            },
+          },
+          { upsert: true }
+        );
+      }
+    } catch (autoErr) {
+      console.warn('Failed to auto-enroll new student into existing classroom courses:', autoErr);
+    }
+
     return this._toClassroomResponse(classroom);
   }
 
@@ -188,6 +248,33 @@ export class ClassroomService {
 
   // ── Courses ───────────────────────────────────────────────────────────────
 
+  private async _resolveVersionId(courseId: string, inputVersionId?: string): Promise<string> {
+    if (inputVersionId && ObjectId.isValid(inputVersionId)) {
+      try {
+        const vDoc = await this.courseRepo.readVersion(inputVersionId);
+        if (vDoc && vDoc.courseId?.toString() === courseId) {
+          return inputVersionId;
+        }
+      } catch (_) {}
+    }
+
+    const course = await this.courseRepo.read(courseId);
+    if (course && course.versions && course.versions.length > 0) {
+      try {
+        const activeVersions = await this.courseRepo.getActiveVersions(
+          course.versions.map((v) => (v ? v.toString() : ''))
+        );
+        if (activeVersions && activeVersions.length > 0) {
+          return activeVersions[activeVersions.length - 1]._id?.toString() || '';
+        }
+        return course.versions[course.versions.length - 1]?.toString() || '';
+      } catch (_) {
+        return course.versions[course.versions.length - 1]?.toString() || '';
+      }
+    }
+    return inputVersionId || '';
+  }
+
   async assignCourse(
     classroomId: string,
     body: AssignCourseBody,
@@ -198,10 +285,12 @@ export class ClassroomService {
     const existing = await this.repo.findCourseAssignment(classroomId, body.courseId);
     if (existing) throw new BadRequestError('Course is already assigned to this classroom.');
 
+    const resolvedVersionId = await this._resolveVersionId(body.courseId, body.versionId);
+
     const data: IClassroomCourse = {
       classroomId,
       courseId: body.courseId,
-      versionId: body.versionId,
+      versionId: resolvedVersionId,
       assignedAt: new Date(),
     };
     const created = await this.repo.assignCourse(data);
@@ -212,6 +301,24 @@ export class ClassroomService {
 
       const members = await this.repo.findMembersByClassroom(classroomId);
       if (members && members.length > 0) {
+        for (const m of members) {
+          const studentIdStr = String(m.studentId || (m as any).student_id || (m as any).userId || '');
+          if (!studentIdStr) continue;
+          try {
+            await this.enrollmentService.enrollUser(
+              studentIdStr,
+              body.courseId,
+              resolvedVersionId,
+              'STUDENT',
+              false,
+            );
+          } catch (eErr: any) {
+            if (!eErr?.message?.includes('already enrolled')) {
+              console.warn('Auto-enroll note in assignCourse:', eErr?.message || eErr);
+            }
+          }
+        }
+
         const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
         const bulkOps = members.map((m) => ({
           updateOne: {
@@ -225,10 +332,10 @@ export class ClassroomService {
                 student_id: m.studentId,
                 classroom_id: classroomId,
                 course_id: body.courseId,
-                version_id: body.versionId,
+                version_id: resolvedVersionId,
                 source_classroom_id: classroomId,
-                status: 'pending_acceptance',
-                accepted: false,
+                status: 'active',
+                accepted: true,
                 progress: 0,
                 progress_percentage: 0,
                 enrolled_at: new Date(),
@@ -243,7 +350,7 @@ export class ClassroomService {
       const createdAnn = await this.announcementRepo.create({
         classroom_id: classroomId,
         author_id: instructorId,
-        content: `🎉 Course Invitation: ${courseTitle}. Open the Courses tab to view and accept your enrollment!`,
+        content: `🎉 Course Assigned: ${courseTitle}. Access it directly under your Courses tab!`,
         type: 'course_invitation',
         metadata: {
           course_id: body.courseId,
@@ -352,6 +459,24 @@ export class ClassroomService {
         try {
           const members = await this.repo.findMembersByClassroom(classroomId);
           if (members && members.length > 0) {
+            for (const m of members) {
+              const studentIdStr = String(m.studentId || (m as any).student_id || (m as any).userId || '');
+              if (!studentIdStr) continue;
+              try {
+                await this.enrollmentService.enrollUser(
+                  studentIdStr,
+                  courseId,
+                  versionId,
+                  'STUDENT',
+                  false,
+                );
+              } catch (eErr: any) {
+                if (!eErr?.message?.includes('already enrolled')) {
+                  console.warn('Auto-enroll note in batchAssignCourse:', eErr?.message || eErr);
+                }
+              }
+            }
+
             const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
             const bulkOps = members.map((m) => ({
               updateOne: {
@@ -378,72 +503,6 @@ export class ClassroomService {
               },
             }));
             await enrollmentsCol.bulkWrite(bulkOps);
-
-            // Primary 'enrollment' collection sync
-            const mainEnrollCol = await this.db.getCollection<any>('enrollment');
-            const courseObjId = safeObjectId(courseId) || courseId;
-            const versionObjId = safeObjectId(versionId) || versionId;
-            const mainOps = members.map((m) => {
-              const studentIdStr = String(m.studentId);
-              const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
-              return {
-                updateOne: {
-                  filter: {
-                    userId: { $in: [studentObjId, studentIdStr] },
-                    courseId: { $in: [courseObjId, courseId] },
-                  },
-                  update: {
-                    $set: {
-                      userId: studentObjId,
-                      courseId: courseObjId,
-                      courseVersionId: versionObjId,
-                      role: 'STUDENT',
-                      status: 'ACTIVE',
-                      accepted: true,
-                      enrollmentDate: new Date(),
-                      isDeleted: false,
-                      classroomId: classroomId,
-                    },
-                    $setOnInsert: {
-                      percentCompleted: 0,
-                      completedItemsCount: 0,
-                    },
-                  },
-                  upsert: true,
-                },
-              };
-            });
-            await mainEnrollCol.bulkWrite(mainOps);
-
-            // Primary 'progress' collection sync
-            const progressCol = await this.db.getCollection<any>('progress');
-            const progOps = members.map((m) => {
-              const studentIdStr = String(m.studentId);
-              const studentObjId = safeObjectId(studentIdStr) || studentIdStr;
-              return {
-                updateOne: {
-                  filter: {
-                    userId: { $in: [studentObjId, studentIdStr] },
-                    courseId: { $in: [courseObjId, courseId] },
-                  },
-                  update: {
-                    $set: {
-                      userId: studentObjId,
-                      courseId: courseObjId,
-                      courseVersionId: versionObjId,
-                      updatedAt: new Date(),
-                    },
-                    $setOnInsert: {
-                      completedItemIds: [],
-                      percentCompleted: 0,
-                      createdAt: new Date(),
-                    },
-                  },
-                  upsert: true,
-                },
-              };
-            });
-            await progressCol.bulkWrite(progOps);
           }
         } catch (mErr) {
           console.warn('Failed to update classroom member enrollments:', mErr);
@@ -591,12 +650,18 @@ export class ClassroomService {
 
     const versionId = assignment.versionId ? assignment.versionId.toString() : courseId;
 
-    await this.enrollmentService.enrollUser(
-      studentId,
-      courseId,
-      versionId,
-      'STUDENT',
-    );
+    try {
+      await this.enrollmentService.enrollUser(
+        studentId,
+        courseId,
+        versionId,
+        'STUDENT',
+      );
+    } catch (err: any) {
+      if (!err?.message?.includes('already enrolled')) {
+        console.warn('Enrollment note in startClassroomCourse:', err?.message || err);
+      }
+    }
 
     try {
       const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');

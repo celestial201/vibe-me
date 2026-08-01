@@ -25,6 +25,7 @@ import {
   CreateAssignmentBody,
   GradeSubmissionBody,
   PushCourseBody,
+  PushCourseToClassroomsBody,
   StudentAnalyticsRosterDTO,
   StudentInsightsResponse,
   SubmissionResponse,
@@ -325,5 +326,70 @@ export class ClassroomLmsController {
   ) {
     const studentId = user._id?.toString() ?? '';
     return this.lmsService.getStudentEnrollmentStatus(params.id, studentId);
+  }
+
+  @OpenAPI({ summary: 'Push a course to multiple classrooms' })
+  @Post('/teacher/courses/push-classroom')
+  @Post('/courses/push-classroom')
+  @Post('/teacher/courses/:courseId/push-classroom')
+  @Post('/courses/:courseId/push-classroom')
+  async pushCourseToMultipleClassrooms(
+    @Param('courseId') courseId: string,
+    @Body() body: PushCourseToClassroomsBody,
+    @CurrentUser() user: IUser,
+  ) {
+    const targetCourseId = courseId || body.courseId || '';
+    const note = body.teacherNote || body.message;
+    return this.lmsService.pushCourseToMultipleClassrooms(
+      targetCourseId,
+      user,
+      body.classroomIds || [],
+      note,
+    );
+  }
+
+  @OpenAPI({ summary: 'Get pending course invitations for current student' })
+  @Get('/student/invitations')
+  @Get('/student/invitations/pending')
+  async getPendingStudentInvitations(@CurrentUser() user: IUser) {
+    return this.lmsService.getPendingStudentInvitations(user);
+  }
+
+  @OpenAPI({ summary: 'Student accepts course invitation' })
+  @Post('/student/invitations/:invitationId/accept')
+  @Post('/student/invitations/:inviteId/accept')
+  @Post('/invitations/:inviteId/accept')
+  async acceptStudentInvitation(
+    @Param('invitationId') invitationId: string,
+    @Param('inviteId') inviteIdParam: string,
+    @CurrentUser() user: IUser,
+  ) {
+    const targetId = invitationId || inviteIdParam || '';
+    return this.lmsService.acceptStudentInvitation(targetId, user);
+  }
+
+  @OpenAPI({ summary: 'Student declines course invitation' })
+  @Post('/student/invitations/:invitationId/decline')
+  async declineStudentInvitation(
+    @Param('invitationId') invitationId: string,
+    @CurrentUser() user: IUser,
+  ) {
+    return this.lmsService.declineStudentInvitation(invitationId, user);
+  }
+
+  @OpenAPI({ summary: 'Get enrolled courses for current student' })
+  @Get('/student/enrolled-courses')
+  async getStudentEnrolledCourses(@CurrentUser() user: IUser) {
+    return this.lmsService.getStudentEnrolledCourses(user);
+  }
+
+  @OpenAPI({ summary: 'Update lastAccessedAt timestamp when Course Player initializes lessons' })
+  @Post('/student/courses/:courseId/access')
+  async updateCoursePlayerAccess(
+    @Param('courseId') courseId: string,
+    @CurrentUser() user: IUser,
+  ) {
+    await this.lmsService.updateProgressLastAccessedAt(user, courseId);
+    return { success: true, timestamp: new Date().toISOString() };
   }
 }

@@ -592,18 +592,23 @@ export class InviteService extends BaseService {
     if (!invite) {
       throw new NotFoundError('Invite not found');
     }
-    const versionStatus = await this.courseRepo.getCourseVersionStatus(
-      invite.courseVersionId.toString(),
-    );
+    let versionStatus: string | null = null;
+    try {
+      versionStatus = await this.courseRepo.getCourseVersionStatus(
+        invite.courseVersionId.toString(),
+      );
+    } catch (_) {
+      versionStatus = null;
+    }
 
-    if (versionStatus === 'archived') {
+    if (!versionStatus || versionStatus === 'archived') {
       await this.inviteRepo.updateInvite(inviteId, {
         inviteStatus: 'CANCELLED',
       });
 
-      throw new ForbiddenError(
-        "Can'not process invite. Because course version is archived.",
-      );
+      return {
+        message: 'This course or version is no longer available.',
+      };
     }
     console.log('====invite----', invite);
     if (invite.type === InviteType.BULK) {
@@ -910,12 +915,29 @@ export class InviteService extends BaseService {
     }
 
     const invites = await this.inviteRepo.findPendingInvitesByEmail(user.email);
+    const validInvites: InviteResult[] = [];
 
-    const invitesWithCourse = await Promise.all(
-      invites.map(async invite => {
-        const course = await this.courseRepo.read(invite.courseId.toString());
+    for (const invite of invites) {
+      const courseIdStr = invite.courseId?.toString() || '';
+      if (courseIdStr.startsWith('course-') || courseIdStr === 'undefined' || courseIdStr === 'null') {
+        await this.inviteRepo.updateInvite(invite._id.toString(), { inviteStatus: 'CANCELLED' });
+        continue;
+      }
 
-        return new InviteResult(
+      let course: any = null;
+      try {
+        course = await this.courseRepo.read(courseIdStr);
+      } catch (_) {
+        course = null;
+      }
+
+      if (!course) {
+        await this.inviteRepo.updateInvite(invite._id.toString(), { inviteStatus: 'CANCELLED' });
+        continue;
+      }
+
+      validInvites.push(
+        new InviteResult(
           invite._id,
           invite.email,
           invite.inviteStatus,
@@ -925,11 +947,11 @@ export class InviteService extends BaseService {
           invite.courseVersionId,
           invite.cohortId,
           course,
-        );
-      }),
-    );
+        )
+      );
+    }
 
-    return invitesWithCourse;
+    return validInvites;
   }
 
   async findInviteById(inviteId: string): Promise<InviteResult> {

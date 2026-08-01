@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CourseCard } from "@/components/course/CourseCard";
 import { CourseListCard } from "@/components/course/CourseListCard";
 import { FollowUpInvitesBanner } from "@/components/course/FollowUpInvitesBanner";
+import { PendingInvitationsBanner } from "@/app/pages/student/components/PendingInvitationsBanner";
 import { NewAnnouncementsPopup } from "@/components/announcements/NewAnnouncementsPopup";
 import { LayoutGrid, List, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -237,6 +238,9 @@ function DashboardContent() {
                 Welcome back — here's your progress at a glance.
               </p>
             </section>
+
+            {/* Pending course invitations pushed from Onboarding Classrooms */}
+            <PendingInvitationsBanner />
 
             {/* Exclusive follow-up course invites unlocked by completing a course */}
             <FollowUpInvitesBanner />

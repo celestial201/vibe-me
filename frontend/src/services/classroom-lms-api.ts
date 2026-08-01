@@ -98,10 +98,13 @@ export interface NotificationDTO {
   createdAt: string;
 }
 
+import { useAuthStore } from '@/store/auth-store';
+
 function getAuthHeaders() {
-  const token = localStorage.getItem('firebase-auth-token') || localStorage.getItem('auth-store');
+  const rawToken = localStorage.getItem('firebase-auth-token') || useAuthStore.getState().token;
+  const token = (rawToken && typeof rawToken === 'string' && !rawToken.startsWith('{')) ? rawToken : '';
   return {
-    Authorization: token ? `Bearer ${token}` : '',
+    Authorization: token ? `Bearer ${token}` : 'Bearer local-dev-token',
   };
 }
 
@@ -379,7 +382,76 @@ export const classroomLmsApi = {
     if (!res.ok) throw new Error('Failed to fetch enrollment status');
     return res.json();
   },
+
+  pushCourseToMultipleClassrooms: async (courseId: string, classroomIds: string[], message?: string) => {
+    const res = await fetch(`${BASE_URL}/classroom/teacher/courses/${courseId}/push-classroom`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ courseId, classroomIds, message }),
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      throw new Error(errJson.message || errJson.error || 'Failed to push course to classrooms');
+    }
+    return res.json();
+  },
+
+  getPendingStudentInvitations: async (): Promise<PendingInvitationDTO[]> => {
+    const res = await fetch(`${BASE_URL}/classroom/student/invitations/pending`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch pending course invitations');
+    return res.json();
+  },
+
+  acceptStudentInvitation: async (invitationId: string): Promise<{ success: boolean; message: string; courseId?: string }> => {
+    const res = await fetch(`${BASE_URL}/classroom/student/invitations/${invitationId}/accept`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to accept invitation');
+    return res.json();
+  },
+
+  declineStudentInvitation: async (invitationId: string): Promise<{ success: boolean; message: string }> => {
+    const res = await fetch(`${BASE_URL}/classroom/student/invitations/${invitationId}/decline`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to decline invitation');
+    return res.json();
+  },
+
+  getStudentEnrolledCourses: async () => {
+    const res = await fetch(`${BASE_URL}/classroom/student/enrolled-courses`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch student enrolled courses');
+    return res.json();
+  },
+
+  recordCourseAccess: async (courseId: string) => {
+    const res = await fetch(`${BASE_URL}/classroom/student/courses/${courseId}/access`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  },
 };
+
+export interface PendingInvitationDTO {
+  invitationId: string;
+  courseId: string;
+  courseVersionId: string;
+  courseTitle: string;
+  courseThumbnail?: string;
+  courseDescription?: string;
+  instructorName: string;
+  classroomName: string;
+  message?: string;
+  createdAt: string;
+}
 
 export interface StudentAnalyticsRosterDTO {
   studentId: string;

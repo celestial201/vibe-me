@@ -202,9 +202,9 @@ function AssignCoursesDrawer({ classroomId, open, onClose, assignedCourseIds }: 
     const enrollments = enrollmentsResponse?.enrollments ?? []
     const seen = new Map<string, any>()
     for (const e of enrollments) {
-      const courseId = typeof e.courseId === 'string' ? e.courseId : bufferToHex(e.courseId)
-      const versionId = typeof e.courseVersionId === 'string' ? e.courseVersionId : bufferToHex(e.courseVersionId)
-      if (!seen.has(courseId)) {
+      const courseId = extractStringId(e.courseId) || (typeof e.courseId === 'string' ? e.courseId : bufferToHex(e.courseId))
+      const versionId = extractStringId(e.courseVersionId) || (typeof e.courseVersionId === 'string' ? e.courseVersionId : bufferToHex(e.courseVersionId))
+      if (courseId && !seen.has(courseId)) {
         seen.set(courseId, { courseId, versionId, name: e.course?.name ?? 'Untitled', versionName: e.courseVersion?.name ?? '' })
       }
     }
@@ -222,8 +222,10 @@ function AssignCoursesDrawer({ classroomId, open, onClose, assignedCourseIds }: 
 
   const handleAssign = () => {
     for (const [courseId, versionId] of selected.entries()) {
-      if (!assignedCourseIds.has(courseId)) {
-        assignCourse({ courseId, versionId })
+      const cleanCourseId = extractStringId(courseId)
+      const cleanVersionId = extractStringId(versionId)
+      if (cleanCourseId && !assignedCourseIds.has(cleanCourseId)) {
+        assignCourse({ courseId: cleanCourseId, versionId: cleanVersionId })
       }
     }
     setSelected(new Map())

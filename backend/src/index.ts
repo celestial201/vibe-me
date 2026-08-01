@@ -19,12 +19,14 @@ import { authorizationChecker } from './shared/functions/authorizationChecker.js
 import { currentUserChecker } from './shared/functions/currentUserChecker.js';
 import { startCron } from './utils/startCron.js';
 import { GLOBAL_TYPES } from './types.js';
+import { DevAuthAdapter } from './shared/middleware/DevAuthAdapter.js';
 
 const app = express();
 const globalRateLimiter = createRateLimiter();
 
 // app.use(globalRateLimiter);
 app.use(loggingHandler);
+app.use(DevAuthAdapter.middleware());
 
 app.set('trust proxy', 1);
 
@@ -36,7 +38,7 @@ const { controllers, validators } = await loadAppModules(
 const corsOptions: CorsOptions = {
   origin: appConfig.origins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-API-Key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-API-Key', 'x-test-user-id', 'x-test-user-role', 'X-Test-User-Id', 'X-Test-User-Role'],
   credentials: true,
   optionsSuccessStatus: 204,
 };

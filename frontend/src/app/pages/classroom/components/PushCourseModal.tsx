@@ -12,8 +12,8 @@ interface Props {
   onClose: () => void;
 }
 
-const getCourseId = (course: any, index: number): string => {
-  if (!course) return `course-${index}`;
+const getCourseId = (course: any): string => {
+  if (!course) return '';
   if (typeof course._id === 'string' && course._id !== '[object Object]') return course._id;
   if (typeof course.id === 'string' && course.id !== '[object Object]') return course.id;
   if (typeof course.courseId === 'string' && course.courseId !== '[object Object]') return course.courseId;
@@ -32,7 +32,16 @@ const getCourseId = (course: any, index: number): string => {
     const str = String(rawId);
     if (str && str !== '[object Object]') return str;
   }
-  return `course-${index}`;
+  return '';
+};
+
+const getCourseName = (course: any): string => {
+  if (!course) return 'Untitled Course';
+  if (typeof course.name === 'string' && course.name.trim()) return course.name;
+  if (typeof course.title === 'string' && course.title.trim()) return course.title;
+  if (typeof course.courseName === 'string' && course.courseName.trim()) return course.courseName;
+  if (typeof course.courseTitle === 'string' && course.courseTitle.trim()) return course.courseTitle;
+  return 'Untitled Course';
 };
 
 export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
@@ -78,20 +87,16 @@ export function PushCourseModal({ classroomId, isOpen, onClose }: Props) {
                 No published Vibe courses found in your account.
               </p>
             ) : (
-              <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                <SelectTrigger className="w-full h-10 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-amber-500">
-                  <SelectValue placeholder="Choose a course to push..." className="text-slate-900 dark:text-slate-100 font-semibold" />
+              <Select value={selectedCourseId} onValueChange={(val) => setSelectedCourseId(val)}>
+                <SelectTrigger className="w-full h-10 rounded-xl font-semibold cursor-pointer">
+                  <SelectValue placeholder="Choose a course to push..." />
                 </SelectTrigger>
-                <SelectContent className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl z-50">
+                <SelectContent className="z-[9999] bg-popover text-popover-foreground border border-border shadow-xl max-h-60 overflow-y-auto">
                   {courses.map((course: any, idx: number) => {
-                    const uniqueId = getCourseId(course, idx);
-                    const courseName = typeof course.name === 'string' ? course.name : (typeof course.title === 'string' ? course.title : 'Untitled Course');
+                    const uniqueId = getCourseId(course) || `course-${idx}`;
+                    const courseName = getCourseName(course);
                     return (
-                      <SelectItem
-                        key={uniqueId}
-                        value={uniqueId}
-                        className="text-slate-900 dark:text-slate-100 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-slate-100 dark:focus:bg-slate-800 focus:text-slate-900 dark:focus:text-slate-100 cursor-pointer"
-                      >
+                      <SelectItem key={uniqueId} value={uniqueId} className="cursor-pointer font-medium">
                         {courseName}
                       </SelectItem>
                     );

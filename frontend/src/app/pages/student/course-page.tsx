@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useCourseVersionById, useUserProgress, useItemsBySectionId, useItemById, useGetProcotoringSettings, useSubmitFlag, enqueueNavigation, useSkipOptionalItem, useRecalculateStudentProgress, useInvites, useAcceptInvite } from "@/hooks/hooks";
 import { useAuthStore } from "@/store/auth-store";
 import { useCourseStore } from "@/store/course-store";
-import { Link, Navigate, useRouter } from "@tanstack/react-router";
+import { Link, Navigate, useRouter, useNavigate } from "@tanstack/react-router";
 import StudentProjectItem from "./components/StudentProjectItem";
 import { enterFullscreen, exitFullscreen } from "@/utils/fullscreen";
 const LazyStudentTimeslotModal = lazy(() => import("@/components/course/StudentTimeslotModal"));
@@ -79,11 +79,22 @@ export default function CoursePage() {
   const [showProctorDialog, setShowProctorDialog] = useState(true);
   const { user } = useAuthStore();
   const router = useRouter();
+  const navigate = useNavigate();
   const currentCourse = useCourseStore((state) => state.currentCourse);
+  const clearCurrentCourse = useCourseStore((state) => state.clearCurrentCourse);
   const COURSE_ID = currentCourse?.courseId || "";
   const VERSION_ID = currentCourse?.versionId || "";
   const COHORT_ID = currentCourse?.cohortId || "";
   const COHORT_NAME = currentCourse?.cohortName || "";
+
+  useEffect(() => {
+    const isDummyId = (id?: string) => !id || id.startsWith('course-') || id === 'undefined' || id === 'null';
+    if (isDummyId(COURSE_ID) || isDummyId(VERSION_ID)) {
+      console.warn('Invalid/dummy course ID found in course-store. Clearing store.');
+      clearCurrentCourse();
+      navigate({ to: '/student/dashboard' });
+    }
+  }, [COURSE_ID, VERSION_ID, clearCurrentCourse, navigate]);
   // Ethics consent gate: must be signed once per course before entering content
   const { signed: ethicsConsentSigned, isLoading: ethicsConsentLoading } =
     useGetEthicsConsent(COURSE_ID, VERSION_ID);

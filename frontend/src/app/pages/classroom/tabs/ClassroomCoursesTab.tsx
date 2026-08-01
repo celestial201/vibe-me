@@ -40,6 +40,19 @@ export function ClassroomCoursesTab({ classroomId, isInstructor = false }: Props
     navigate({ to: '/student/learn' });
   };
 
+  const handleAcceptAndOpen = async (courseId: string, versionId?: string) => {
+    try {
+      setAcceptingId(courseId);
+      await classroomLmsApi.acceptCourseEnrollment(classroomId, courseId);
+      qc.invalidateQueries({ queryKey: ['classroom-courses', classroomId] });
+    } catch {
+      // proceed to open course
+    } finally {
+      setAcceptingId(null);
+      handleOpenCourse(courseId, versionId);
+    }
+  };
+
   const handleRemoveCourse = async (courseId: string) => {
     if (!window.confirm('Are you sure you want to remove this course from the classroom?')) return;
     try {
