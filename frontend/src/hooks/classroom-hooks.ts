@@ -5,7 +5,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { classroomApi, ClassroomDTO, ClassroomMemberDTO, ClassroomCourseDTO } from '@/services/classroom-api';
+import { classroomApi, ClassroomDTO, ClassroomMemberDTO, ClassroomCourseDTO, ClassroomVaultItemDTO } from '@/services/classroom-api';
 import { toast } from 'sonner';
 
 // ── Query keys ─────────────────────────────────────────────────────────────────
@@ -16,6 +16,7 @@ export const CK = {
   classroom: (id: string) => ['classroom', id] as const,
   students: (id: string) => ['classroom-students', id] as const,
   courses: (id: string) => ['classroom-courses', id] as const,
+  vault: (id: string) => ['classroom-vault', id] as const,
 };
 
 // ── Teacher — Classroom CRUD ──────────────────────────────────────────────────
@@ -220,3 +221,41 @@ export function useGetClassroomCourseProgress(classroomId: string, courseId: str
   });
 }
 
+
+// ── Vault ───────────────────────────────────────────────────────────────────
+
+export function useGetVaultItems(classroomId: string) {
+  return useQuery<ClassroomVaultItemDTO[]>({
+    queryKey: CK.vault(classroomId),
+    queryFn: () => classroomApi.getVaultItems(classroomId),
+    enabled: !!classroomId,
+  });
+}
+
+export function useCreateVaultItem(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation<ClassroomVaultItemDTO, Error, Omit<ClassroomVaultItemDTO, '_id' | 'classroom_id' | 'instructor_id' | 'createdAt' | 'updatedAt'>>({
+    mutationFn: (body) => classroomApi.createVaultItem(classroomId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CK.vault(classroomId) });
+      toast.success('Added to vault!');
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Failed to add item');
+    },
+  });
+}
+
+export function useDeleteVaultItem(classroomId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ success: boolean }, Error, string>({
+    mutationFn: (itemId) => classroomApi.deleteVaultItem(classroomId, itemId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CK.vault(classroomId) });
+      toast.success('Vault item removed!');
+    },
+    onError: (err) => {
+      toast.error(err.message || 'Failed to remove item');
+    },
+  });
+}

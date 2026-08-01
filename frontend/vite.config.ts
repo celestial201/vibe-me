@@ -20,6 +20,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(__dirname, "./src"),
+      "ajv/dist/compile/codegen": "ajv/dist/compile/codegen/index.js",
     },
   },
   server: {

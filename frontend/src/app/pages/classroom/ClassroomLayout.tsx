@@ -17,6 +17,7 @@ import {
   Globe,
   FileText,
   Trophy,
+  Archive,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -29,6 +30,7 @@ import { ClassroomCalendarTab } from './tabs/ClassroomCalendarTab';
 import { ClassroomClassworkTab } from './tabs/ClassroomClassworkTab';
 import { ClassroomCoursesTab } from './tabs/ClassroomCoursesTab';
 import { ClassroomLeaderboardTab } from './tabs/ClassroomLeaderboardTab';
+import { ClassroomVaultTab } from './tabs/ClassroomVaultTab';
 
 export function ClassroomLayout() {
   const params = useParams({ strict: false }) as { classroomId?: string; id?: string };
@@ -184,6 +186,10 @@ export function ClassroomLayout() {
                 <Users className="w-4 h-4" />
                 People
               </TabsTrigger>
+              <TabsTrigger value="vault" className="flex items-center gap-2 text-xs md:text-sm px-4">
+                <Archive className="w-4 h-4" />
+                Vault
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -209,6 +215,10 @@ export function ClassroomLayout() {
 
           <TabsContent value="people" className="focus-visible:outline-none">
             <ClassroomPeopleTab classroomId={classroomId} isInstructor={isInstructor} />
+          </TabsContent>
+
+          <TabsContent value="vault" className="focus-visible:outline-none">
+            <ClassroomVaultTab classroomId={classroomId} isInstructor={isInstructor} />
           </TabsContent>
         </Tabs>
       </main>

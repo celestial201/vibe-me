@@ -57,6 +57,18 @@ export interface ClassroomMemberDTO {
   joinedAt: string;
 }
 
+export interface ClassroomVaultItemDTO {
+  _id: string;
+  classroom_id: string;
+  instructor_id: string;
+  title: string;
+  type: 'link' | 'pdf' | 'csv' | 'other';
+  url: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ClassroomCourseDTO {
   _id?: string;
   classroomId: string;
@@ -150,8 +162,16 @@ export const classroomApi = {
 
   removeCourse: (classroomId: string, courseId: string) =>
     request<void>('DELETE', `${BASE}/${classroomId}/courses/${courseId}`),
+
+  // ── Vault ────────────────────────────────────────────────────────────────
+  getVaultItems: (id: string) =>
+    request<ClassroomVaultItemDTO[]>('GET', `${BASE}/${id}/vault`),
+
+  createVaultItem: (id: string, body: Omit<ClassroomVaultItemDTO, '_id' | 'classroom_id' | 'instructor_id' | 'createdAt' | 'updatedAt'>) =>
+    request<ClassroomVaultItemDTO>('POST', `${BASE}/${id}/vault`, body),
+
+  deleteVaultItem: (id: string, itemId: string) =>
+    request<{ success: boolean }>('DELETE', `${BASE}/${id}/vault/${itemId}`),
 };
 
 export const fetchJoinedClassrooms = classroomApi.getJoinedClassrooms;
-
-

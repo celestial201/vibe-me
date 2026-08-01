@@ -20,6 +20,7 @@ export class MongoDatabase implements IDatabase<Db> {
   private client: MongoClient | null;
   public database: Db | null;
   private connectingPromise: Promise<Db> | null = null;
+  private memoryServer: any = null;
 
   /**
    * Creates an instance of MongoDatabase.
@@ -99,13 +100,34 @@ export class MongoDatabase implements IDatabase<Db> {
           const path = await import('path');
           const dbDir = path.resolve(process.cwd(), '.data/mongo_db');
           if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
-          const memoryServer = await MongoMemoryServer.create({
+          
+          const lockFile = path.join(dbDir, 'mongod.lock');
+          if (fs.existsSync(lockFile)) {
+            console.log('🧹 Removing stale mongod.lock file...');
+            fs.unlinkSync(lockFile);
+          }
+          
+          this.memoryServer = await MongoMemoryServer.create({
             instance: {
               dbPath: dbDir,
               storageEngine: 'wiredTiger',
+              launchTimeout: 60000,
             },
           });
-          const memoryUri = memoryServer.getUri();
+          
+          const cleanup = async () => {
+            if (this.memoryServer) {
+              console.log('🛑 Gracefully stopping MongoMemoryServer...');
+              await this.memoryServer.stop();
+              this.memoryServer = null;
+            }
+            process.exit();
+          };
+          process.once('SIGINT', cleanup);
+          process.once('SIGTERM', cleanup);
+          process.once('SIGUSR2', cleanup);
+          
+          const memoryUri = this.memoryServer.getUri();
           console.log(`✅ Local persistent MongoDB running at ${memoryUri} (Data saved in ${dbDir})`);
           this.client = new MongoClient(memoryUri, { retryWrites: true });
           await this.client.connect();
@@ -128,6 +150,37 @@ export class MongoDatabase implements IDatabase<Db> {
         if (this.database) {
           // 🔥 Ensure indexes after connection
           await this.ensureIndexes();
+          
+          // 🔥 Auto-seed local accounts if missing
+          if (process.env.USE_MEMORY_DB === 'true' || !this.uri) {
+            const usersCol = this.database.collection('users');
+            const bcrypt = await import('bcrypt');
+            
+            const defaultUsers = [
+              { email: 'admin@vibe.com', passwordRaw: 'admin123', firstName: 'Admin', lastName: 'User', roles: 'admin' },
+              { email: 'teacher@vibe.com', passwordRaw: 'teacher123', firstName: 'Teacher', lastName: 'User', roles: 'teacher' },
+              { email: 'student@vibe.com', passwordRaw: 'student123', firstName: 'Student', lastName: 'User', roles: 'student' }
+            ];
+
+            for (const u of defaultUsers) {
+              const userExists = await usersCol.findOne({ email: u.email });
+              if (!userExists) {
+                const hash = await bcrypt.hash(u.passwordRaw, 10);
+                await usersCol.insertOne({
+                  email: u.email,
+                  password: hash,
+                  firstName: u.firstName,
+                  lastName: u.lastName,
+                  roles: u.roles,
+                  authProvider: 'local',
+                  firebaseUID: `local_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                  createdAt: new Date(),
+                  updatedAt: new Date()
+                });
+                console.log(`✅ Auto-seeded ${u.email} (password: ${u.passwordRaw})`);
+              }
+            }
+          }
         }
 
         return this.database as Db;
