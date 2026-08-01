@@ -27,6 +27,8 @@ import {
   Send,
   HelpCircle,
   Paperclip,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -194,6 +196,28 @@ export function ClassroomClassworkTab({ classroomId, isInstructor }: Props) {
     </div>
   );
 }
+
+const getAttachmentUrl = (path: string) => {
+  if (!path) return '';
+  if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  const baseUrl = (import.meta.env.VITE_BASE_URL || 'http://localhost:3141/api').replace(/\/api\/?$/, '');
+  return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+};
+
+const getAttachmentName = (path: string) => {
+  if (!path) return 'Attachment';
+  const parts = path.split('/');
+  const raw = parts[parts.length - 1] || 'Attachment';
+  return raw.replace(/^\d+-\d+-/, '').replace(/^\d+-/, '') || raw;
+};
+
+const isImageAttachment = (path: string) => {
+  return /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(path);
+};
+
+const isPdfAttachment = (path: string) => {
+  return /\.pdf$/i.test(path);
+};
 
 function AssignmentCard({
   assignment,
@@ -378,7 +402,87 @@ function AssignmentCard({
         </div>
       </CardHeader>
 
-      <CardContent className="pt-0">
+      <CardContent className="pt-0 space-y-4">
+        {/* Teacher Uploaded Attachments / Shared Documents */}
+        {assignment.attachments && assignment.attachments.length > 0 && (
+          <div className="pt-1 space-y-2">
+            <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+              <Paperclip className="w-3.5 h-3.5 text-primary" />
+              Attached Teacher Resources & Documents ({assignment.attachments.length}):
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {assignment.attachments.map((attUrl: string, idx: number) => {
+                const fullUrl = getAttachmentUrl(attUrl);
+                const fileName = getAttachmentName(attUrl);
+                const isImg = isImageAttachment(attUrl);
+                const isPdf = isPdfAttachment(attUrl);
+
+                return (
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition group"
+                  >
+                    {isImg ? (
+                      <div className="space-y-1.5">
+                        <a
+                          href={fullUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block overflow-hidden rounded border border-border/40 max-h-40 bg-black/10"
+                        >
+                          <img
+                            src={fullUrl}
+                            alt={fileName}
+                            className="w-full object-cover max-h-40 group-hover:scale-105 transition-transform duration-200"
+                          />
+                        </a>
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="truncate font-medium text-foreground text-[11px]" title={fileName}>
+                            {fileName}
+                          </span>
+                          <Button size="xs" variant="ghost" className="h-6 text-[10px] gap-1 text-primary shrink-0" asChild>
+                            <a href={fullUrl} target="_blank" rel="noreferrer">
+                              View Image
+                            </a>
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {isPdf ? (
+                            <div className="w-7 h-7 rounded bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+                              <FileText className="w-4 h-4" />
+                            </div>
+                          ) : (
+                            <div className="w-7 h-7 rounded bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                              <Paperclip className="w-4 h-4" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground text-[11px] truncate" title={fileName}>
+                              {fileName}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground uppercase font-mono">
+                              {isPdf ? 'PDF Document' : 'Attachment'}
+                            </p>
+                          </div>
+                        </div>
+                        <Button size="xs" variant="outline" className="h-7 text-[11px] gap-1 shrink-0" asChild>
+                          <a href={fullUrl} target="_blank" rel="noreferrer">
+                            <Download className="w-3 h-3" />
+                            View / Open
+                          </a>
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {!isInstructor ? (
           /* Student Submission Workspace (Resubmissions Allowed) */
           <div className="mt-2 pt-3 border-t border-border/40 space-y-3">
