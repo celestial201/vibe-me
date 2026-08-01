@@ -807,7 +807,15 @@ export class EnrollmentService extends BaseService {
   private async getClassroomEnrollmentsForStudent(userId: string, existingCourseIds: Set<string> = new Set()): Promise<any[]> {
     try {
       const classroomMemberEnrollCol = await this.database.getCollection<any>('classroom_member_enrollments');
-      const docs = await classroomMemberEnrollCol.find({ student_id: userId }).toArray();
+      const uObjId = ObjectId.isValid(userId) ? new ObjectId(userId) : null;
+      const idVariants = uObjId ? [userId, uObjId] : [userId];
+
+      const docs = await classroomMemberEnrollCol.find({
+        $or: [
+          { student_id: { $in: idVariants } },
+          { studentId: { $in: idVariants } }
+        ]
+      }).toArray();
       if (!docs || docs.length === 0) return [];
 
       const courseRepoCol = await this.database.getCollection<any>('newCourse');
@@ -840,11 +848,16 @@ export class EnrollmentService extends BaseService {
           continue;
         }
 
-        const vId = doc.version_id?.toString() ||
-                    courseDoc?.versions?.[0]?._id?.toString() ||
-                    courseDoc?.versions?.[0]?.versionId?.toString() ||
-                    courseDoc?.defaultVersionId?.toString() ||
-                    cId;
+        let vId = doc.version_id?.toString();
+        if (!vId || vId === cId) {
+          if (courseDoc?.versions && courseDoc.versions.length > 0) {
+            const lastV = courseDoc.versions[courseDoc.versions.length - 1];
+            vId = lastV?._id?.toString() || lastV?.versionId?.toString() || lastV?.toString() || '';
+          }
+        }
+        if (!vId) {
+          vId = cId;
+        }
 
         const resolvedTitle = courseDoc?.name || courseDoc?.title || courseDoc?.courseName;
         if (!resolvedTitle) {

@@ -43,6 +43,7 @@ import {
   MoreVertical,
   MoreVerticalIcon,
   MessageSquareQuote,
+  School,
 } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
@@ -50,6 +51,7 @@ import { ProctoringModal } from "@/components/EditProctoringModal"
 import { Pagination } from "@/components/ui/Pagination"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { AssignToClassroomModal } from "./components/AssignToClassroomModal"
 
 // Import the hooks and auth store
 import {
@@ -480,6 +482,7 @@ function CourseCard({
     description: "",
   })
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false)
+  const [showAssignToClassroomModal, setShowAssignToClassroomModal] = useState(false)
   const [expandedDescription, setExpandedDescription] = useState(false)
 
   const [creatingErrors, setCreatingErrors] = useState<{ name?: string; description?: string }>({});
@@ -869,6 +872,18 @@ function CourseCard({
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation()
+                      setShowAssignToClassroomModal(true)
+                    }}
+                    disabled={isArchivedEnrollment}
+                    title={isArchivedEnrollment ? "Cannot assign archived course" : undefined}
+                  >
+                    <School className="h-4 w-4 mr-2" />
+                    Assign to Classroom
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation()
                       if (!expandedCourse) toggleCourse()
                       setShowDeleteCourseModal(true)
                     }}
@@ -901,6 +916,12 @@ function CourseCard({
             onClose={() => setShowAnnouncementModal(false)}
             defaultType={AnnouncementType.COURSE_SPECIFIC}
             courseId={courseIdHex}
+          />
+          <AssignToClassroomModal
+            isOpen={showAssignToClassroomModal}
+            onClose={() => setShowAssignToClassroomModal(false)}
+            courseId={courseIdHex}
+            courseName={course.name}
           />
         </div>
 

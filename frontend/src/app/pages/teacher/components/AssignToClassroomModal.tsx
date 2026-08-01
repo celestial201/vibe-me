@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { School, Loader2, BookOpen } from 'lucide-react'
 import { useGetMyClassrooms, useBatchAssignCourse } from '@/hooks/classroom-hooks'
+import { extractStringId } from '@/utils/idNormalizer'
 
 interface AssignToClassroomModalProps {
   isOpen: boolean
@@ -30,6 +31,8 @@ export function AssignToClassroomModal({
   const batchAssignMutation = useBatchAssignCourse()
   const [selectedIds, setSelectedIds] = useState<string[]>([])
 
+  const cleanCourseId = extractStringId(courseId)
+
   const handleToggleClassroom = (id: string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
@@ -40,16 +43,16 @@ export function AssignToClassroomModal({
     if (selectedIds.length === classrooms.length) {
       setSelectedIds([])
     } else {
-      setSelectedIds(classrooms.map((c) => c._id))
+      setSelectedIds(classrooms.map((c) => extractStringId(c._id || c)))
     }
   }
 
   const handleConfirm = async () => {
-    if (selectedIds.length === 0) return
+    if (selectedIds.length === 0 || !cleanCourseId) return
     try {
       await batchAssignMutation.mutateAsync({
-        courseId,
-        classroomIds: selectedIds,
+        courseId: cleanCourseId,
+        classroomIds: selectedIds.map((id) => extractStringId(id)),
       })
       setSelectedIds([])
       onClose()
