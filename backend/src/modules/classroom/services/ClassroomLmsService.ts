@@ -508,11 +508,11 @@ export class ClassroomLmsService {
 
   async upsertDailyJournal(
     classroomId: string,
-    instructorId: string,
+    userId: string,
     dayNumber: number,
     data: { title?: string; content_link?: string; journal_entry?: string }
   ) {
-    await this._requireOwner(classroomId, instructorId);
+    await this._requireMemberOrOwner(classroomId, userId);
     const classroom = await this._requireClassroom(classroomId);
     const startDate = classroom.internship_start_date
       ? new Date(classroom.internship_start_date)
