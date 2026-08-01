@@ -5,6 +5,9 @@ import {
   useSubmitAssignment,
   useGetSubmissions,
   useGradeSubmission,
+  useGetAssignmentComments,
+  useAddAssignmentComment,
+  useToggleVerifyComment,
 } from '@/hooks/classroom-lms-hooks';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -237,19 +240,19 @@ function AssignmentCard({
   const [gradeInput, setGradeInput] = useState<number>(100);
   const [feedbackInput, setFeedbackInput] = useState<string>('');
 
-  // Contextual Q&A drawer state
+  // Contextual Q&A drawer state & backend queries
   const [isQaOpen, setIsQaOpen] = useState(false);
   const [qaQuestion, setQaQuestion] = useState('');
-  const [comments, setComments] = useState<QAComment[]>([
-    {
-      id: '1',
-      authorName: 'Instructor',
-      authorRole: 'teacher',
-      content: 'Feel free to ask any clarifying questions about this assignment in this discussion thread!',
-      isVerifiedAnswer: true,
-      createdAt: new Date().toISOString(),
-    },
-  ]);
+
+  const { data: serverComments = [] } = useGetAssignmentComments(
+    classroomId,
+    assignment._id,
+    true,
+  );
+  const addCommentMutation = useAddAssignmentComment(classroomId, assignment._id);
+  const toggleVerifyMutation = useToggleVerifyComment(classroomId, assignment._id);
+
+  const comments = serverComments;
 
   const handleStudentFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -283,26 +286,20 @@ function AssignmentCard({
     setSelectedSubId(null);
   };
 
-  const handleAddQaComment = (e: React.FormEvent) => {
+  const handleAddQaComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!qaQuestion.trim()) return;
-    const newComment: QAComment = {
-      id: Date.now().toString(),
-      authorName: isInstructor ? 'Teacher' : 'Student',
-      authorRole: isInstructor ? 'teacher' : 'student',
-      content: qaQuestion,
-      isVerifiedAnswer: isInstructor,
-      createdAt: new Date().toISOString(),
-    };
-    setComments((prev) => [...prev, newComment]);
-    setQaQuestion('');
+    if (!qaQuestion.trim() || addCommentMutation.isPending) return;
+    try {
+      await addCommentMutation.mutateAsync(qaQuestion.trim());
+      setQaQuestion('');
+    } catch (_) {}
   };
 
-  const toggleVerifiedAnswer = (id: string) => {
-    if (!isInstructor) return;
-    setComments((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, isVerifiedAnswer: !c.isVerifiedAnswer } : c))
-    );
+  const toggleVerifiedAnswer = async (commentId: string) => {
+    if (!isInstructor || toggleVerifyMutation.isPending) return;
+    try {
+      await toggleVerifyMutation.mutateAsync(commentId);
+    } catch (_) {}
   };
 
   const dueDate = new Date(assignment.due_date);
@@ -354,34 +351,44 @@ function AssignmentCard({
 
                 {/* Q&A Comments List */}
                 <div className="flex-1 overflow-y-auto space-y-3 py-4 pr-1">
-                  {comments.map((c) => (
-                    <div key={c.id} className="p-3 rounded-lg border border-border/50 bg-muted/30 space-y-1.5 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-foreground flex items-center gap-1.5">
-                          {c.authorName}
-                          <Badge variant="outline" className="text-[9px] px-1 py-0">
-                            {c.authorRole}
-                          </Badge>
-                        </span>
-                        {c.isVerifiedAnswer && (
-                          <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 flex items-center gap-0.5">
-                            <Check className="w-3 h-3" /> Verified Answer
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-foreground leading-relaxed whitespace-pre-wrap">{c.content}</p>
-                      {isInstructor && (
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          className="h-5 text-[10px] text-emerald-600 hover:text-emerald-700 p-0"
-                          onClick={() => toggleVerifiedAnswer(c.id)}
-                        >
-                          {c.isVerifiedAnswer ? 'Unmark Verified' : 'Mark as Verified Answer'}
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                  {comments.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic py-6 text-center">
+                      No questions in this Q&A thread yet. Be the first to ask a question!
+                    </p>
+                  ) : (
+                    comments.map((c: any) => {
+                      const commentId = c._id || c.id;
+                      return (
+                        <div key={commentId} className="p-3 rounded-lg border border-border/50 bg-muted/30 space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-foreground flex items-center gap-1.5">
+                              {c.authorName || 'User'}
+                              <Badge variant="outline" className="text-[9px] px-1 py-0 capitalize">
+                                {c.authorRole || 'student'}
+                              </Badge>
+                            </span>
+                            {c.isVerifiedAnswer && (
+                              <Badge className="bg-emerald-600 text-white text-[9px] px-1.5 py-0 flex items-center gap-0.5">
+                                <Check className="w-3 h-3" /> Verified Answer
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-foreground leading-relaxed whitespace-pre-wrap">{c.content}</p>
+                          {isInstructor && (
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              className="h-5 text-[10px] text-emerald-600 hover:text-emerald-700 p-0"
+                              onClick={() => toggleVerifiedAnswer(commentId)}
+                              disabled={toggleVerifyMutation.isPending}
+                            >
+                              {c.isVerifiedAnswer ? 'Unmark Verified' : 'Mark as Verified Answer'}
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
 
                 {/* Add Comment Input */}
@@ -392,7 +399,7 @@ function AssignmentCard({
                     onChange={(e) => setQaQuestion(e.target.value)}
                     className="text-xs h-9"
                   />
-                  <Button type="submit" size="sm" className="h-9 px-3">
+                  <Button type="submit" size="sm" className="h-9 px-3" disabled={addCommentMutation.isPending || !qaQuestion.trim()}>
                     <Send className="w-3.5 h-3.5" />
                   </Button>
                 </form>

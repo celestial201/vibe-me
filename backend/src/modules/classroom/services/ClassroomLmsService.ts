@@ -344,6 +344,130 @@ export class ClassroomLmsService {
     }));
   }
 
+  // ── Assignment Q&A Discussion Thread Comments ────────────────────────────────
+
+  async getAssignmentComments(classroomId: string, assignmentId: string, userId: string): Promise<any[]> {
+    await this._requireMemberOrOwner(classroomId, userId);
+    const commentsCol = await this.db.getCollection<any>('classroom_assignment_comments');
+    const aOid = safeObjectId(assignmentId) || assignmentId;
+    const docs = await commentsCol
+      .find({
+        $or: [
+          { assignment_id: assignmentId },
+          { assignmentId: assignmentId },
+          ...(aOid !== assignmentId ? [{ assignment_id: aOid }, { assignmentId: aOid }] : []),
+        ],
+      })
+      .sort({ createdAt: 1 })
+      .toArray();
+
+    return docs.map((doc: any) => ({
+      _id: doc._id?.toString() ?? '',
+      classroom_id: (doc.classroom_id || doc.classroomId)?.toString() ?? classroomId,
+      assignment_id: (doc.assignment_id || doc.assignmentId)?.toString() ?? assignmentId,
+      author_id: (doc.author_id || doc.authorId)?.toString() ?? '',
+      authorName: doc.authorName || doc.author_name || 'User',
+      authorRole: doc.authorRole || doc.author_role || 'student',
+      content: doc.content || '',
+      isVerifiedAnswer: Boolean(doc.isVerifiedAnswer || doc.is_verified_answer),
+      createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : new Date().toISOString(),
+    }));
+  }
+
+  async addAssignmentComment(
+    classroomId: string,
+    assignmentId: string,
+    userId: string,
+    content: string,
+  ): Promise<any> {
+    await this._requireMemberOrOwner(classroomId, userId);
+    if (!content || !content.trim()) {
+      throw new BadRequestError('Comment content cannot be empty');
+    }
+
+    const classroom = await this._requireClassroom(classroomId);
+    const isTeacher = classroom.instructorId?.toString() === userId;
+
+    let authorName = isTeacher ? 'Instructor' : 'Student';
+    let authorRole: 'teacher' | 'student' = isTeacher ? 'teacher' : 'student';
+
+    try {
+      const user = await this.userRepo.findById(userId);
+      if (user) {
+        authorName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || authorName;
+        const rolesArr = Array.isArray(user.roles) ? user.roles : [];
+        const isTeacherRole = rolesArr.some(r => String(r).toLowerCase() === 'teacher' || String(r).toLowerCase() === 'instructor');
+        if (isTeacherRole || isTeacher) {
+          authorRole = 'teacher';
+        }
+      }
+    } catch (_) {}
+
+    const commentsCol = await this.db.getCollection<any>('classroom_assignment_comments');
+    const aOid = safeObjectId(assignmentId) || assignmentId;
+    const cOid = safeObjectId(classroomId) || classroomId;
+    const uOid = safeObjectId(userId) || userId;
+
+    const doc = {
+      _id: new ObjectId(),
+      classroom_id: cOid,
+      assignment_id: aOid,
+      author_id: uOid,
+      authorName,
+      authorRole,
+      content: content.trim(),
+      isVerifiedAnswer: isTeacher,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    await commentsCol.insertOne(doc);
+
+    return {
+      _id: doc._id.toString(),
+      classroom_id: classroomId,
+      assignment_id: assignmentId,
+      author_id: userId,
+      authorName,
+      authorRole,
+      content: doc.content,
+      isVerifiedAnswer: doc.isVerifiedAnswer,
+      createdAt: doc.createdAt.toISOString(),
+    };
+  }
+
+  async toggleVerifyComment(
+    classroomId: string,
+    assignmentId: string,
+    commentId: string,
+    instructorId: string,
+  ): Promise<any> {
+    await this._requireOwner(classroomId, instructorId);
+    const commentsCol = await this.db.getCollection<any>('classroom_assignment_comments');
+    const cOid = safeObjectId(commentId);
+    const filter = cOid ? { $or: [{ _id: cOid }, { _id: commentId }] } : { _id: commentId };
+
+    const comment = await commentsCol.findOne(filter);
+    if (!comment) throw new NotFoundError('Comment not found');
+
+    const newStatus = !Boolean(comment.isVerifiedAnswer || comment.is_verified_answer);
+    await commentsCol.updateOne(filter, {
+      $set: { isVerifiedAnswer: newStatus, is_verified_answer: newStatus, updatedAt: new Date() },
+    });
+
+    return {
+      _id: comment._id?.toString() ?? commentId,
+      classroom_id: classroomId,
+      assignment_id: assignmentId,
+      author_id: (comment.author_id || comment.authorId)?.toString() ?? '',
+      authorName: comment.authorName || comment.author_name || 'User',
+      authorRole: comment.authorRole || comment.author_role || 'teacher',
+      content: comment.content || '',
+      isVerifiedAnswer: newStatus,
+      createdAt: comment.createdAt ? new Date(comment.createdAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
   // ── 2-Month Internship Journey Calendar ──────────────────────────────────────
 
   async getInternshipCalendar(classroomId: string, userId: string) {

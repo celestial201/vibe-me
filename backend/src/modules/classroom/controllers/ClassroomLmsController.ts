@@ -43,6 +43,12 @@ class ClassroomAssignmentParams {
   assignmentId: string;
 }
 
+class AssignmentCommentParams {
+  id: string;
+  assignmentId: string;
+  commentId: string;
+}
+
 class ClassroomSubmissionParams {
   id: string;
   submissionId: string;
@@ -146,6 +152,38 @@ export class ClassroomLmsController {
   ): Promise<AssignmentResponse[]> {
     const userId = user._id?.toString() ?? '';
     return this.lmsService.getAssignments(params.id, userId);
+  }
+
+  @OpenAPI({ summary: 'Get Q&A discussion comments for an assignment' })
+  @Get('/:id/assignments/:assignmentId/comments')
+  async getAssignmentComments(
+    @Params() params: ClassroomAssignmentParams,
+    @CurrentUser() user: IUser,
+  ) {
+    const userId = user._id?.toString() ?? '';
+    return this.lmsService.getAssignmentComments(params.id, params.assignmentId, userId);
+  }
+
+  @OpenAPI({ summary: 'Add a Q&A discussion comment to an assignment' })
+  @Post('/:id/assignments/:assignmentId/comments')
+  @HttpCode(201)
+  async addAssignmentComment(
+    @Params() params: ClassroomAssignmentParams,
+    @Body() body: { content: string },
+    @CurrentUser() user: IUser,
+  ) {
+    const userId = user._id?.toString() ?? '';
+    return this.lmsService.addAssignmentComment(params.id, params.assignmentId, userId, body.content);
+  }
+
+  @OpenAPI({ summary: 'Toggle verified answer flag on Q&A comment (Teacher)' })
+  @Patch('/:id/assignments/:assignmentId/comments/:commentId/toggle-verify')
+  async toggleVerifyComment(
+    @Params() params: AssignmentCommentParams,
+    @CurrentUser() user: IUser,
+  ) {
+    const instructorId = user._id?.toString() ?? '';
+    return this.lmsService.toggleVerifyComment(params.id, params.assignmentId, params.commentId, instructorId);
   }
 
   // ── Internship Journey Calendar ─────────────────────────────────────────────

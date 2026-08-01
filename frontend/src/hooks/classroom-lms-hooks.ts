@@ -23,6 +23,7 @@ export const LMS_CK = {
   pendingAnnouncements: (classroomId: string) => ['classroom', classroomId, 'announcements', 'pending'] as const,
   assignments: (classroomId: string) => ['classroom', classroomId, 'assignments'] as const,
   submissions: (classroomId: string, assignmentId: string) => ['classroom', classroomId, 'assignments', assignmentId, 'submissions'] as const,
+  assignmentComments: (classroomId: string, assignmentId: string) => ['classroom', classroomId, 'assignments', assignmentId, 'comments'] as const,
   insights: (classroomId: string, studentId: string) => ['classroom', classroomId, 'students', studentId, 'insights'] as const,
   calendar: (classroomId: string) => ['classroom', classroomId, 'calendar'] as const,
   completedJournals: (classroomId: string) => ['journal-submissions', classroomId] as const,
@@ -196,6 +197,38 @@ export function useCreateAssignment(classroomId: string) {
       toast.success('Assignment created!');
     },
     onError: (err: any) => toast.error(err.message || 'Failed to create assignment'),
+  });
+}
+
+export function useGetAssignmentComments(classroomId: string, assignmentId: string, enabled = true) {
+  return useQuery({
+    queryKey: LMS_CK.assignmentComments(classroomId, assignmentId),
+    queryFn: () => classroomLmsApi.getAssignmentComments(classroomId, assignmentId),
+    enabled: Boolean(classroomId && assignmentId && enabled),
+    refetchInterval: 3000,
+  });
+}
+
+export function useAddAssignmentComment(classroomId: string, assignmentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (content: string) => classroomLmsApi.addAssignmentComment(classroomId, assignmentId, content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LMS_CK.assignmentComments(classroomId, assignmentId) });
+      toast.success('Comment posted to Q&A thread!');
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to post comment'),
+  });
+}
+
+export function useToggleVerifyComment(classroomId: string, assignmentId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (commentId: string) => classroomLmsApi.toggleVerifyComment(classroomId, assignmentId, commentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LMS_CK.assignmentComments(classroomId, assignmentId) });
+    },
+    onError: (err: any) => toast.error(err.message || 'Failed to update verified status'),
   });
 }
 

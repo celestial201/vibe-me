@@ -26,6 +26,18 @@ export interface AssignmentDTO {
   updatedAt: string;
 }
 
+export interface AssignmentCommentDTO {
+  _id: string;
+  classroom_id: string;
+  assignment_id: string;
+  author_id: string;
+  authorName: string;
+  authorRole: 'teacher' | 'student';
+  content: string;
+  isVerifiedAnswer: boolean;
+  createdAt: string;
+}
+
 export interface SubmissionDTO {
   _id: string;
   assignment_id: string;
@@ -193,6 +205,33 @@ export const classroomLmsApi = {
       body: formData,
     });
     if (!res.ok) throw new Error('Failed to create assignment');
+    return res.json();
+  },
+
+  getAssignmentComments: async (classroomId: string, assignmentId: string): Promise<AssignmentCommentDTO[]> => {
+    const res = await fetch(`${BASE_URL}/classroom/${classroomId}/assignments/${assignmentId}/comments`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch Q&A discussion comments');
+    return res.json();
+  },
+
+  addAssignmentComment: async (classroomId: string, assignmentId: string, content: string): Promise<AssignmentCommentDTO> => {
+    const res = await fetch(`${BASE_URL}/classroom/${classroomId}/assignments/${assignmentId}/comments`, {
+      method: 'POST',
+      headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) throw new Error('Failed to post Q&A comment');
+    return res.json();
+  },
+
+  toggleVerifyComment: async (classroomId: string, assignmentId: string, commentId: string): Promise<AssignmentCommentDTO> => {
+    const res = await fetch(`${BASE_URL}/classroom/${classroomId}/assignments/${assignmentId}/comments/${commentId}/toggle-verify`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to toggle comment verification');
     return res.json();
   },
 
