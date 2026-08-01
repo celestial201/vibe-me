@@ -22,17 +22,30 @@ interface StudentLeaderboardEntry {
   rank: number;
 }
 
-export function ClassroomLeaderboardTab({ classroomId, isInstructor }: Props) {
+export function ClassroomLeaderboardTab({ classroomId }: Props) {
   const { data: students, isLoading: isStudentsLoading } = useGetClassroomStudents(classroomId);
-  const { data: roster, isLoading: isRosterLoading } = useGetStudentAnalyticsRoster(classroomId, isInstructor || false);
+  const { data: roster, isLoading: isRosterLoading } = useGetStudentAnalyticsRoster(classroomId);
   const { data: completedJournals = [] } = useGetCompletedJournals(classroomId);
 
   const isLoading = isStudentsLoading || isRosterLoading;
 
-  // Build ranking table dynamically
-  const leaderboard: StudentLeaderboardEntry[] = (students || []).map((student) => {
-    const studentId = student.studentId || (student as any)._id || '';
-    const rosterDoc = (roster || []).find((r: any) => String(r.studentId) === String(studentId));
+  // Build ranking table dynamically combining enrolled students & roster analytics
+  const allStudentIds = new Set<string>();
+  (students || []).forEach((s) => {
+    const id = s.studentId || (s as any)._id;
+    if (id) allStudentIds.add(String(id));
+  });
+  (roster || []).forEach((r: any) => {
+    const id = r.studentId || r._id;
+    if (id) allStudentIds.add(String(id));
+  });
+
+  const leaderboard: StudentLeaderboardEntry[] = Array.from(allStudentIds).map((studentId) => {
+    const student = (students || []).find((s) => String(s.studentId || (s as any)._id) === String(studentId));
+    const rosterDoc = (roster || []).find((r: any) => String(r.studentId || r._id) === String(studentId));
+
+    const name = rosterDoc?.studentName || student?.studentName || 'Student';
+    const email = rosterDoc?.studentEmail || student?.studentEmail || '';
 
     // Calculate points:
     // 1. Course Completion (+100 pts per 100% completed course)
@@ -55,8 +68,8 @@ export function ClassroomLeaderboardTab({ classroomId, isInstructor }: Props) {
 
     return {
       studentId,
-      name: student.studentName || 'Student',
-      email: student.studentEmail || '',
+      name,
+      email,
       coursePoints,
       assignmentPoints,
       journalPoints,

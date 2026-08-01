@@ -149,8 +149,8 @@ export class ClassroomService {
     await this.repo.delete(id);
   }
 
-  async getStudents(classroomId: string, instructorId: string): Promise<ClassroomMemberResponse[]> {
-    await this._requireOwner(classroomId, instructorId);
+  async getStudents(classroomId: string, userId: string): Promise<ClassroomMemberResponse[]> {
+    await this._requireMemberOrOwner(classroomId, userId);
     const members = await this.repo.findMembersByClassroom(classroomId);
     return members.map(this._toMemberResponse);
   }
@@ -802,6 +802,16 @@ export class ClassroomService {
     const classroom = await this._requireClassroom(id);
     if (classroom.instructorId?.toString() !== instructorId) {
       throw new ForbiddenError('Only the classroom owner can perform this action');
+    }
+    return classroom;
+  }
+
+  private async _requireMemberOrOwner(id: string, userId: string): Promise<IClassroom> {
+    const classroom = await this._requireClassroom(id);
+    if (classroom.instructorId?.toString() === userId) return classroom;
+    const isMember = await this.repo.findMember(id, userId);
+    if (!isMember) {
+      throw new ForbiddenError('Only classroom members or instructor can perform this action');
     }
     return classroom;
   }
