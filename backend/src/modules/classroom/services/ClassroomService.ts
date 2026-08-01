@@ -152,7 +152,31 @@ export class ClassroomService {
   async getStudents(classroomId: string, userId: string): Promise<ClassroomMemberResponse[]> {
     await this._requireMemberOrOwner(classroomId, userId);
     const members = await this.repo.findMembersByClassroom(classroomId);
-    return members.map(this._toMemberResponse);
+    const results: ClassroomMemberResponse[] = [];
+    for (const m of members) {
+      const sId = m.studentId?.toString() ?? '';
+      let studentName = 'Student';
+      let studentEmail = '';
+      if (sId) {
+        try {
+          const u = await this.userRepo.findById(sId);
+          if (u) {
+            const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim();
+            studentName = fullName || (u as any).name || u.email || 'Student';
+            studentEmail = u.email || '';
+          }
+        } catch (_) {}
+      }
+      results.push({
+        _id: m._id?.toString(),
+        classroomId: m.classroomId?.toString() ?? '',
+        studentId: sId,
+        studentName,
+        studentEmail,
+        joinedAt: m.joinedAt,
+      });
+    }
+    return results;
   }
 
   // ── Student ───────────────────────────────────────────────────────────────

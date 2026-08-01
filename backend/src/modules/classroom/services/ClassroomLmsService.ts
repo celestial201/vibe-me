@@ -882,8 +882,13 @@ export class ClassroomLmsService {
     for (const m of members) {
       const studentId = String(m.studentId);
       const user = await this.userRepo.findById(studentId);
-      const studentName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Student';
-      const studentEmail = user?.email || '';
+      let studentName = 'Student';
+      let studentEmail = '';
+      if (user) {
+        const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+        studentName = fullName || (user as any).name || user.email || 'Student';
+        studentEmail = user.email || '';
+      }
 
       const studentObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : null;
       const studentIdVariants = studentObjId ? [studentId, studentObjId] : [studentId];

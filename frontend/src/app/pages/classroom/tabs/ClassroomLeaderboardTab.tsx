@@ -44,8 +44,14 @@ export function ClassroomLeaderboardTab({ classroomId }: Props) {
     const student = (students || []).find((s) => String(s.studentId || (s as any)._id) === String(studentId));
     const rosterDoc = (roster || []).find((r: any) => String(r.studentId || r._id) === String(studentId));
 
-    const name = rosterDoc?.studentName || student?.studentName || 'Student';
+    const rawName =
+      (rosterDoc?.studentName && rosterDoc.studentName !== 'Student' ? rosterDoc.studentName : '') ||
+      (student?.studentName && student.studentName !== 'Student' ? student.studentName : '') ||
+      rosterDoc?.studentName ||
+      student?.studentName ||
+      '';
     const email = rosterDoc?.studentEmail || student?.studentEmail || '';
+    const name = rawName && rawName !== 'Student' ? rawName : email ? email.split('@')[0] : 'Student';
 
     // Calculate points:
     // 1. Course Completion (+100 pts per 100% completed course)
