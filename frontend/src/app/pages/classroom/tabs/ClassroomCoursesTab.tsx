@@ -167,15 +167,17 @@ export function ClassroomCoursesTab({ classroomId, isInstructor = false }: Props
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center justify-between pt-1">
-                    <Button
-                      size="sm"
-                      onClick={() => handleOpenCourse(courseIdStr, course.versionId)}
-                      className="gap-1.5 text-xs"
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      {isCompleted ? 'Review Course' : 'Continue Course'}
-                    </Button>
+                  <div className={`flex items-center ${!isInstructor ? 'justify-between' : 'justify-end'} pt-1`}>
+                    {!isInstructor && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleOpenCourse(courseIdStr, course.versionId)}
+                        className="gap-1.5 text-xs"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        {isCompleted ? 'Review Course' : 'Continue Course'}
+                      </Button>
+                    )}
 
                     {isInstructor && (
                       <Button

@@ -51,6 +51,7 @@ import {
 import { useUserEnrollments, useCourseEnrollmentsStats } from '@/hooks/hooks'
 import { useAuthStore } from '@/store/auth-store'
 import { bufferToHex } from '@/utils/helpers'
+import { extractStringId } from '@/utils/idNormalizer'
 import type { ClassroomCourseDTO } from '@/services/classroom-api'
 
 

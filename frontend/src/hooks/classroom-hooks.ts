@@ -48,7 +48,7 @@ export function useCreateClassroom() {
     mutationFn: (body) => classroomApi.createClassroom(body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: CK.myClassrooms });
-      toast.success('Classroom created!');
+      toast.success('Classroom created successfully!');
     },
     onError: (e) => toast.error(e.message ?? 'Failed to create classroom'),
   });
