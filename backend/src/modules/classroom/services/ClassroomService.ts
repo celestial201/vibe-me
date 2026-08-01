@@ -25,8 +25,10 @@ import { EnrollmentService } from '#root/modules/users/services/EnrollmentServic
 import { EnrollmentRepository } from '#shared/database/providers/mongo/repositories/EnrollmentRepository.js';
 
 import { AnnouncementRepository } from '../repositories/providers/mongodb/AnnouncementRepository.js';
+import { NotificationRepository } from '../repositories/providers/mongodb/NotificationRepository.js';
+import { INotification } from '#root/shared/interfaces/models.js';
 import { MongoDatabase } from '#root/shared/database/providers/mongo/MongoDatabase.js';
-import { emitNewAnnouncement } from '#root/shared/socket/socket.js';
+import { emitNewAnnouncement, emitCoursePushed, emitNewNotification } from '#root/shared/socket/socket.js';
 
 const CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const CODE_LENGTH = 6;
@@ -54,6 +56,8 @@ export class ClassroomService {
     private readonly userRepo: IUserRepository,
     @inject(CLASSROOM_TYPES.AnnouncementRepository)
     private readonly announcementRepo: AnnouncementRepository,
+    @inject(CLASSROOM_TYPES.NotificationRepository)
+    private readonly notificationRepo: NotificationRepository,
     @inject(GLOBAL_TYPES.Database)
     private readonly db: MongoDatabase,
   ) {}
@@ -363,8 +367,29 @@ export class ClassroomService {
         updatedAt: new Date(),
       });
       emitNewAnnouncement(classroomId, createdAnn);
+
+      if (members && members.length > 0) {
+        const studentNotifications: Partial<INotification>[] = members.map((m) => ({
+          user_id: m.studentId.toString(),
+          classroom_id: classroomId,
+          type: 'course_pushed',
+          message: `🎉 New course "${courseTitle}" has been assigned to your classroom!`,
+          link: `/classroom/${classroomId}`,
+        }));
+        await this.notificationRepo.createBulk(studentNotifications);
+
+        const memberIds = members.map((m) => m.studentId.toString());
+        emitCoursePushed(classroomId, memberIds, { courseId: body.courseId, courseTitle });
+        memberIds.forEach((sid) => {
+          emitNewNotification(sid, {
+            type: 'course_pushed',
+            message: `🎉 New course "${courseTitle}" has been assigned to your classroom!`,
+            link: `/classroom/${classroomId}`,
+          });
+        });
+      }
     } catch (err) {
-      console.warn('Failed to post announcement for assignCourse:', err);
+      console.warn('Failed to post announcement or notifications for assignCourse:', err);
     }
 
     return this._toCourseResponse(created);
@@ -508,14 +533,14 @@ export class ClassroomService {
           console.warn('Failed to update classroom member enrollments:', mErr);
         }
 
-        // Auto-create stream announcement for course invitation
+        // Auto-create stream announcement, notifications, and emit sockets for course assignment
         try {
           const realCourseId = course._id ? course._id.toString() : String(courseId);
           const courseTitle = course?.name || (course as any)?.title || 'Pushed Course';
           const createdAnn = await this.announcementRepo.create({
             classroom_id: classroomId,
             author_id: instructorId,
-            content: `🎉 Course Invitation: ${courseTitle}. Open the Courses tab to view and accept your enrollment!`,
+            content: `🎉 Course Assigned: ${courseTitle}. Access it directly under your Courses tab!`,
             type: 'course_invitation',
             referenceId: realCourseId,
             metadata: {
@@ -529,8 +554,30 @@ export class ClassroomService {
             updatedAt: new Date(),
           });
           emitNewAnnouncement(classroomId, createdAnn);
+
+          const members = await this.repo.findMembersByClassroom(classroomId);
+          if (members && members.length > 0) {
+            const studentNotifications: Partial<INotification>[] = members.map((m) => ({
+              user_id: m.studentId.toString(),
+              classroom_id: classroomId,
+              type: 'course_pushed',
+              message: `🎉 New course "${courseTitle}" has been assigned to your classroom!`,
+              link: `/classroom/${classroomId}`,
+            }));
+            await this.notificationRepo.createBulk(studentNotifications);
+
+            const memberIds = members.map((m) => m.studentId.toString());
+            emitCoursePushed(classroomId, memberIds, { courseId: realCourseId, courseTitle });
+            memberIds.forEach((sid) => {
+              emitNewNotification(sid, {
+                type: 'course_pushed',
+                message: `🎉 New course "${courseTitle}" has been assigned to your classroom!`,
+                link: `/classroom/${classroomId}`,
+              });
+            });
+          }
         } catch (annErr) {
-          console.warn('Failed to auto-create stream announcement:', annErr);
+          console.warn('Failed to auto-create stream announcement or notifications:', annErr);
         }
 
         assigned.push({ classroomId, courseId, versionId });

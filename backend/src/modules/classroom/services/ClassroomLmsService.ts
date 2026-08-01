@@ -117,8 +117,14 @@ export class ClassroomLmsService {
     const isInstructor = classroom.instructorId?.toString() === authorId;
     const authorUser = await this.userRepo.findById(authorId).catch(() => null);
     const isStudentRole = authorUser?.role === 'student' || (!isInstructor && authorUser?.role !== 'teacher');
+    const streamPermission = (classroom as any).streamPostingPermission || (classroom as any).stream_posting_permission || 'everyone';
 
-    const status = isStudentRole ? 'pending' : 'approved';
+    if (isStudentRole && streamPermission === 'teacher_only') {
+      throw new ForbiddenError('Posting in this classroom stream is restricted to teachers only.');
+    }
+
+    // Direct approval: remove approval requirement when Open Post mode is active
+    const status = 'approved';
 
     const created = await this.announcementRepo.create({
       classroom_id: classroomId,
@@ -140,44 +146,29 @@ export class ClassroomLmsService {
       authorName: authorUser ? `${authorUser.firstName} ${authorUser.lastName || ''}`.trim() : 'User',
     };
 
-    if (status === 'pending') {
-      // Trigger 2: Notify instructor of approval request
-      const instructorId = classroom.instructorId?.toString();
-      if (instructorId) {
-        const notif: Partial<INotification> = {
-          user_id: instructorId,
-          classroom_id: classroomId,
-          type: 'approval_request',
-          message: `A student requested an announcement approval in "${classroom.title}"`,
+    // Emit real-time announcement to room for immediate chat/stream update
+    emitNewAnnouncement(classroomId, response);
+
+    // Save in-app notifications and emit real-time notifications to classroom members
+    const members = await this.classroomRepo.findMembersByClassroom(classroomId);
+    const studentNotifications: Partial<INotification>[] = members.map((m) => ({
+      user_id: m.studentId.toString(),
+      classroom_id: classroomId,
+      type: 'new_announcement',
+      message: `New announcement in "${classroom.title}": "${body.content.slice(0, 50)}..."`,
+      link: `/classroom/${classroomId}`,
+    }));
+
+    if (studentNotifications.length > 0) {
+      await this.notificationRepo.createBulk(studentNotifications);
+      members.forEach((m) => {
+        const sid = m.studentId.toString();
+        emitNewNotification(sid, {
+          type: 'new_announcement',
+          message: `New announcement in "${classroom.title}"`,
           link: `/classroom/${classroomId}`,
-        };
-        const savedNotif = await this.notificationRepo.create(notif);
-        emitNewNotification(instructorId, savedNotif);
-      }
-    } else {
-      // Approved post by teacher: notify room & bulk notify students
-      emitNewAnnouncement(classroomId, response);
-
-      const members = await this.classroomRepo.findMembersByClassroom(classroomId);
-      const studentNotifications: Partial<INotification>[] = members.map((m) => ({
-        user_id: m.studentId.toString(),
-        classroom_id: classroomId,
-        type: 'new_announcement',
-        message: `New announcement in "${classroom.title}": "${body.content.slice(0, 50)}..."`,
-        link: `/classroom/${classroomId}`,
-      }));
-
-      if (studentNotifications.length > 0) {
-        await this.notificationRepo.createBulk(studentNotifications);
-        members.forEach((m) => {
-          const sid = m.studentId.toString();
-          emitNewNotification(sid, {
-            type: 'new_announcement',
-            message: `New announcement in "${classroom.title}"`,
-            link: `/classroom/${classroomId}`,
-          });
         });
-      }
+      });
     }
 
     return response;
@@ -306,28 +297,31 @@ export class ClassroomLmsService {
       updatedAt: created.updatedAt,
     };
 
-    emitNewAssignment(classroomId, response);
+    try {
+      emitNewAssignment(classroomId, response);
 
-    // Trigger 1: Bulk insert Notifications for all students
-    const members = await this.classroomRepo.findMembersByClassroom(classroomId);
-    const studentNotifications: Partial<INotification>[] = members.map((m) => ({
-      user_id: m.studentId.toString(),
-      classroom_id: classroomId,
-      type: 'new_assignment',
-      message: `New assignment: "${title}" in "${classroom.title}"`,
-      link: `/classroom/${classroomId}`,
-    }));
-
-    if (studentNotifications.length > 0) {
-      await this.notificationRepo.createBulk(studentNotifications);
-      members.forEach((m) => {
-        const sid = m.studentId.toString();
-        emitNewNotification(sid, {
+      const members = await this.classroomRepo.findMembersByClassroom(classroomId);
+      if (members && members.length > 0) {
+        const studentNotifications: Partial<INotification>[] = members.map((m) => ({
+          user_id: m.studentId.toString(),
+          classroom_id: classroomId,
           type: 'new_assignment',
           message: `New assignment: "${title}" in "${classroom.title}"`,
           link: `/classroom/${classroomId}`,
+        }));
+
+        await this.notificationRepo.createBulk(studentNotifications);
+        members.forEach((m) => {
+          const sid = m.studentId.toString();
+          emitNewNotification(sid, {
+            type: 'new_assignment',
+            message: `New assignment: "${title}" in "${classroom.title}"`,
+            link: `/classroom/${classroomId}`,
+          });
         });
-      });
+      }
+    } catch (notifErr) {
+      console.warn('Assignment created, notification note:', notifErr);
     }
 
     return response;
@@ -741,41 +735,34 @@ export class ClassroomLmsService {
     const members = await this.classroomRepo.findMembersByClassroom(classroomId);
     if (!members || members.length === 0) return [];
 
-    const isTeacher = classroom.instructorId?.toString() === requesterId;
-
-    if (!isTeacher) {
-      const studentRoster = [];
-      for (const m of members) {
-        const studentId = String(m.studentId);
-        const user = await this.userRepo.findById(studentId);
-        const classmateName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Classmate';
-        studentRoster.push({
-          studentId,
-          classmateName,
-          joiningDate: m.joinedAt || new Date(),
-        });
-      }
-      return studentRoster;
-    }
-
+    const classroomObjId = ObjectId.isValid(classroomId) ? new ObjectId(classroomId) : null;
+    const classroomIdVariants = classroomObjId ? [classroomId, classroomObjId] : [classroomId];
 
     const assignments = await this.assignmentRepo.findByClassroom(classroomId);
     const submissions = await this.submissionRepo.findByClassroom(classroomId);
     const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
-    const enrollments = await enrollmentsCol.find({ classroom_id: classroomId }).toArray();
+    const classroomCoursesCol = await this.db.getCollection<any>('classroom_courses');
 
-    const enrollmentMap = new Map<string, any>();
-    for (const e of enrollments) {
-      enrollmentMap.set(String(e.student_id), e);
-    }
+    const assignedCourses = await classroomCoursesCol.find({
+      $or: [
+        { classroom_id: { $in: classroomIdVariants } },
+        { classroomId: { $in: classroomIdVariants } },
+      ],
+    }).toArray();
 
-    const roster: StudentAnalyticsRosterDTO[] = [];
+    const mainEnrollCol = await this.db.getCollection<any>('enrollment');
+    const progressCol = await this.db.getCollection<any>('progress');
+
+    const roster: any[] = [];
 
     for (const m of members) {
       const studentId = String(m.studentId);
       const user = await this.userRepo.findById(studentId);
       const studentName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Student';
       const studentEmail = user?.email || '';
+
+      const studentObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : null;
+      const studentIdVariants = studentObjId ? [studentId, studentObjId] : [studentId];
 
       const studentSubs = submissions.filter((s) => String(s.student_id) === studentId);
       const subMap = new Map<string, any>();
@@ -795,47 +782,124 @@ export class ClassroomLmsService {
         };
       });
 
-      const enrollDoc = enrollmentMap.get(studentId);
-      let courseAccepted: 'accepted' | 'pending' =
-        enrollDoc?.accepted || enrollDoc?.status === 'accepted' || enrollDoc?.status === 'active'
-          ? 'accepted'
-          : 'pending';
-      let courseProgress: number = enrollDoc?.progress || enrollDoc?.progress_percentage || 0;
+      const [progDocs, enrDocs, memberEnrDocs] = await Promise.all([
+        progressCol.find({
+          $or: [
+            { userId: { $in: studentIdVariants } },
+            { user_id: { $in: studentIdVariants } },
+            { student_id: { $in: studentIdVariants } },
+          ],
+        }).toArray().catch(() => []),
+        mainEnrollCol.find({
+          $or: [
+            { userId: { $in: studentIdVariants } },
+            { user_id: { $in: studentIdVariants } },
+            { student_id: { $in: studentIdVariants } },
+          ],
+        }).toArray().catch(() => []),
+        enrollmentsCol.find({
+          $or: [
+            { student_id: { $in: studentIdVariants } },
+            { studentId: { $in: studentIdVariants } },
+          ],
+        }).toArray().catch(() => []),
+      ]);
 
-      try {
-        const mainEnrollCol = await this.db.getCollection<any>('enrollments');
-        const progressCol = await this.db.getCollection<any>('progress');
-        const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+      const studentCourses: any[] = [];
+      let maxProgress = 0;
+      let completedCoursesCount = 0;
+      const completedCourseIds = new Set<string>();
 
-        const activeEnr = await mainEnrollCol.findOne({
-          userId: { $in: [userObjId, studentId] },
-          status: 'active',
-        });
+      if (assignedCourses && assignedCourses.length > 0) {
+        for (const ac of assignedCourses) {
+          const cId = String(ac.course_id || ac.courseId || ac._id || '');
+          if (!cId) continue;
+          const cObjId = ObjectId.isValid(cId) ? new ObjectId(cId) : null;
+          const cIdVariants = cObjId ? [cId, cObjId] : [cId];
 
-        if (activeEnr) {
-          courseAccepted = 'accepted';
-          if (typeof activeEnr.percentCompleted === 'number') {
-            courseProgress = Math.max(courseProgress, Number(activeEnr.percentCompleted.toFixed(2)));
+          const pMatch = progDocs.find((d: any) =>
+            cIdVariants.some((v) => String(v) === String(d.courseId || d.course_id || ''))
+          );
+          const eMatch = enrDocs.find((d: any) =>
+            cIdVariants.some((v) => String(v) === String(d.courseId || d.course_id || ''))
+          );
+          const mMatch = memberEnrDocs.find((d: any) =>
+            cIdVariants.some((v) => String(v) === String(d.course_id || d.courseId || ''))
+          );
+
+          let pct = Math.max(
+            pMatch?.percentCompleted || pMatch?.progress || pMatch?.progress_percentage || 0,
+            eMatch?.percentCompleted || eMatch?.progress || eMatch?.progress_percentage || 0,
+            mMatch?.progress || mMatch?.progress_percentage || mMatch?.percentCompleted || 0
+          );
+
+          const isCompleted =
+            pct >= 100 ||
+            pMatch?.completed === true ||
+            eMatch?.status === 'COMPLETED' ||
+            eMatch?.completed === true ||
+            mMatch?.status === 'COMPLETED';
+
+          if (isCompleted) {
+            pct = 100;
+            completedCourseIds.add(cId);
+          }
+
+          studentCourses.push({
+            courseId: cId,
+            progressPercentage: Number(pct.toFixed(2)),
+            isCompleted,
+            completed: isCompleted,
+          });
+
+          if (pct > maxProgress) {
+            maxProgress = Number(pct.toFixed(2));
           }
         }
+      }
 
-        const progDoc = await progressCol.findOne({
-          userId: { $in: [userObjId, studentId] },
-        });
-
-        if (progDoc && typeof progDoc.percentCompleted === 'number') {
-          courseProgress = Math.max(courseProgress, Number(progDoc.percentCompleted.toFixed(2)));
+      for (const d of progDocs) {
+        const pct = d.percentCompleted || d.progress || 0;
+        if (pct >= 100 || d.completed === true) {
+          maxProgress = 100;
+          const cId = String(d.courseId || d.course_id || '');
+          if (cId) completedCourseIds.add(cId);
+        } else if (pct > maxProgress) {
+          maxProgress = Number(pct.toFixed(2));
         }
-      } catch (_) {}
+      }
+      for (const d of enrDocs) {
+        const pct = d.percentCompleted || d.progress || 0;
+        if (pct >= 100 || d.status === 'COMPLETED' || d.completed === true) {
+          maxProgress = 100;
+          const cId = String(d.courseId || d.course_id || '');
+          if (cId) completedCourseIds.add(cId);
+        } else if (pct > maxProgress) {
+          maxProgress = Number(pct.toFixed(2));
+        }
+      }
+      for (const d of memberEnrDocs) {
+        const pct = d.progress || d.progress_percentage || d.percentCompleted || 0;
+        if (pct >= 100 || d.status === 'COMPLETED') {
+          maxProgress = 100;
+          const cId = String(d.course_id || d.courseId || '');
+          if (cId) completedCourseIds.add(cId);
+        } else if (pct > maxProgress) {
+          maxProgress = Number(pct.toFixed(2));
+        }
+      }
 
+      completedCoursesCount = completedCourseIds.size || (maxProgress >= 100 ? 1 : 0);
 
       roster.push({
         studentId,
         name: studentName,
         email: studentEmail,
         joiningDate: m.joinedAt || new Date(),
-        courseAccepted,
-        courseProgress,
+        courseAccepted: 'accepted',
+        courseProgress: maxProgress,
+        completedCoursesCount,
+        courses: studentCourses,
         submissionCount: studentSubs.length,
         flaggedCount: 0,
         queriesCount: 0,
