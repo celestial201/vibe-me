@@ -149,15 +149,17 @@ export function ClassroomCoursesTab({ classroomId, isInstructor = false }: Props
                   </div>
                 </CardHeader>
 
-                <CardContent className="space-y-4 pt-0">
-                  {/* Progress Bar */}
-                  <div className="space-y-1.5 bg-muted/30 p-3 rounded-lg border border-border/40">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="text-muted-foreground font-medium">Cohort Completion</span>
-                      <span className="font-bold text-foreground">{Math.round(percentCompleted)}%</span>
+                <CardContent className="space-y-3 pt-0">
+                  {/* Progress Bar (Students only) */}
+                  {!isInstructor && (
+                    <div className="space-y-1.5 bg-muted/30 p-3 rounded-lg border border-border/40">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-muted-foreground font-medium">Cohort Completion</span>
+                        <span className="font-bold text-foreground">{Math.round(percentCompleted)}%</span>
+                      </div>
+                      <Progress value={percentCompleted} className="h-2" />
                     </div>
-                    <Progress value={percentCompleted} className="h-2" />
-                  </div>
+                  )}
 
                   {/* Actions */}
                   <div className={`flex items-center ${!isInstructor ? 'justify-between' : 'justify-end'} pt-1`}>
