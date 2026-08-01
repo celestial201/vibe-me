@@ -117,8 +117,14 @@ export class ClassroomLmsService {
     const isInstructor = classroom.instructorId?.toString() === authorId;
     const authorUser = await this.userRepo.findById(authorId).catch(() => null);
     const isStudentRole = authorUser?.role === 'student' || (!isInstructor && authorUser?.role !== 'teacher');
+    const streamPermission = (classroom as any).streamPostingPermission || (classroom as any).stream_posting_permission || 'everyone';
 
-    const status = isStudentRole ? 'pending' : 'approved';
+    if (isStudentRole && streamPermission === 'teacher_only') {
+      throw new ForbiddenError('Posting in this classroom stream is restricted to teachers only.');
+    }
+
+    // Direct approval: remove approval requirement when Open Post mode is active
+    const status = 'approved';
 
     const created = await this.announcementRepo.create({
       classroom_id: classroomId,
@@ -140,44 +146,29 @@ export class ClassroomLmsService {
       authorName: authorUser ? `${authorUser.firstName} ${authorUser.lastName || ''}`.trim() : 'User',
     };
 
-    if (status === 'pending') {
-      // Trigger 2: Notify instructor of approval request
-      const instructorId = classroom.instructorId?.toString();
-      if (instructorId) {
-        const notif: Partial<INotification> = {
-          user_id: instructorId,
-          classroom_id: classroomId,
-          type: 'approval_request',
-          message: `A student requested an announcement approval in "${classroom.title}"`,
+    // Emit real-time announcement to room for immediate chat/stream update
+    emitNewAnnouncement(classroomId, response);
+
+    // Save in-app notifications and emit real-time notifications to classroom members
+    const members = await this.classroomRepo.findMembersByClassroom(classroomId);
+    const studentNotifications: Partial<INotification>[] = members.map((m) => ({
+      user_id: m.studentId.toString(),
+      classroom_id: classroomId,
+      type: 'new_announcement',
+      message: `New announcement in "${classroom.title}": "${body.content.slice(0, 50)}..."`,
+      link: `/classroom/${classroomId}`,
+    }));
+
+    if (studentNotifications.length > 0) {
+      await this.notificationRepo.createBulk(studentNotifications);
+      members.forEach((m) => {
+        const sid = m.studentId.toString();
+        emitNewNotification(sid, {
+          type: 'new_announcement',
+          message: `New announcement in "${classroom.title}"`,
           link: `/classroom/${classroomId}`,
-        };
-        const savedNotif = await this.notificationRepo.create(notif);
-        emitNewNotification(instructorId, savedNotif);
-      }
-    } else {
-      // Approved post by teacher: notify room & bulk notify students
-      emitNewAnnouncement(classroomId, response);
-
-      const members = await this.classroomRepo.findMembersByClassroom(classroomId);
-      const studentNotifications: Partial<INotification>[] = members.map((m) => ({
-        user_id: m.studentId.toString(),
-        classroom_id: classroomId,
-        type: 'new_announcement',
-        message: `New announcement in "${classroom.title}": "${body.content.slice(0, 50)}..."`,
-        link: `/classroom/${classroomId}`,
-      }));
-
-      if (studentNotifications.length > 0) {
-        await this.notificationRepo.createBulk(studentNotifications);
-        members.forEach((m) => {
-          const sid = m.studentId.toString();
-          emitNewNotification(sid, {
-            type: 'new_announcement',
-            message: `New announcement in "${classroom.title}"`,
-            link: `/classroom/${classroomId}`,
-          });
         });
-      }
+      });
     }
 
     return response;
