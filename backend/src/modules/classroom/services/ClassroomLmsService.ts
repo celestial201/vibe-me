@@ -743,39 +743,27 @@ export class ClassroomLmsService {
 
     const isTeacher = classroom.instructorId?.toString() === requesterId;
 
-    if (!isTeacher) {
-      const studentRoster = [];
-      for (const m of members) {
-        const studentId = String(m.studentId);
-        const user = await this.userRepo.findById(studentId);
-        const classmateName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Classmate';
-        studentRoster.push({
-          studentId,
-          classmateName,
-          joiningDate: m.joinedAt || new Date(),
-        });
-      }
-      return studentRoster;
-    }
-
-
     const assignments = await this.assignmentRepo.findByClassroom(classroomId);
     const submissions = await this.submissionRepo.findByClassroom(classroomId);
     const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
     const enrollments = await enrollmentsCol.find({ classroom_id: classroomId }).toArray();
 
-    const enrollmentMap = new Map<string, any>();
-    for (const e of enrollments) {
-      enrollmentMap.set(String(e.student_id), e);
-    }
+    const classroomCoursesCol = await this.db.getCollection<any>('classroom_courses');
+    const assignedCourses = await classroomCoursesCol.find({
+      $or: [{ classroom_id: classroomId }, { classroomId }]
+    }).toArray();
 
-    const roster: StudentAnalyticsRosterDTO[] = [];
+    const mainEnrollCol = await this.db.getCollection<any>('enrollment');
+    const progressCol = await this.db.getCollection<any>('progress');
+
+    const roster: any[] = [];
 
     for (const m of members) {
       const studentId = String(m.studentId);
       const user = await this.userRepo.findById(studentId);
       const studentName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Student';
       const studentEmail = user?.email || '';
+      const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
 
       const studentSubs = submissions.filter((s) => String(s.student_id) === studentId);
       const subMap = new Map<string, any>();
@@ -795,47 +783,62 @@ export class ClassroomLmsService {
         };
       });
 
-      const enrollDoc = enrollmentMap.get(studentId);
-      let courseAccepted: 'accepted' | 'pending' =
-        enrollDoc?.accepted || enrollDoc?.status === 'accepted' || enrollDoc?.status === 'active'
-          ? 'accepted'
-          : 'pending';
-      let courseProgress: number = enrollDoc?.progress || enrollDoc?.progress_percentage || 0;
+      const studentCourses: any[] = [];
+      let maxProgress = 0;
 
-      try {
-        const mainEnrollCol = await this.db.getCollection<any>('enrollments');
-        const progressCol = await this.db.getCollection<any>('progress');
-        const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+      for (const ac of assignedCourses) {
+        const cId = String(ac.course_id || ac.courseId || '');
+        if (!cId) continue;
+        const cObjId = ObjectId.isValid(cId) ? new ObjectId(cId) : cId;
 
-        const activeEnr = await mainEnrollCol.findOne({
-          userId: { $in: [userObjId, studentId] },
-          status: 'active',
+        let pct = 0;
+        try {
+          const [progDoc, enrDoc, memberEnrDoc] = await Promise.all([
+            progressCol.findOne({
+              userId: { $in: [userObjId, studentId] },
+              courseId: { $in: [cObjId, cId] },
+            }),
+            mainEnrollCol.findOne({
+              userId: { $in: [userObjId, studentId] },
+              courseId: { $in: [cObjId, cId] },
+            }),
+            enrollmentsCol.findOne({
+              student_id: { $in: [userObjId, studentId] },
+              course_id: { $in: [cObjId, cId] },
+            }),
+          ]);
+
+          pct = Math.max(
+            progDoc?.percentCompleted || 0,
+            enrDoc?.percentCompleted || 0,
+            memberEnrDoc?.progress || memberEnrDoc?.progress_percentage || 0
+          );
+        } catch (_) {}
+
+        const isCompleted = pct >= 100;
+        studentCourses.push({
+          courseId: cId,
+          progressPercentage: Number(pct.toFixed(2)),
+          isCompleted,
+          completed: isCompleted,
         });
 
-        if (activeEnr) {
-          courseAccepted = 'accepted';
-          if (typeof activeEnr.percentCompleted === 'number') {
-            courseProgress = Math.max(courseProgress, Number(activeEnr.percentCompleted.toFixed(2)));
-          }
+        if (pct > maxProgress) {
+          maxProgress = Number(pct.toFixed(2));
         }
+      }
 
-        const progDoc = await progressCol.findOne({
-          userId: { $in: [userObjId, studentId] },
-        });
-
-        if (progDoc && typeof progDoc.percentCompleted === 'number') {
-          courseProgress = Math.max(courseProgress, Number(progDoc.percentCompleted.toFixed(2)));
-        }
-      } catch (_) {}
-
+      const completedCoursesCount = studentCourses.filter(c => c.progressPercentage >= 100 || c.isCompleted).length;
 
       roster.push({
         studentId,
         name: studentName,
         email: studentEmail,
         joiningDate: m.joinedAt || new Date(),
-        courseAccepted,
-        courseProgress,
+        courseAccepted: 'accepted',
+        courseProgress: maxProgress,
+        completedCoursesCount,
+        courses: studentCourses,
         submissionCount: studentSubs.length,
         flaggedCount: 0,
         queriesCount: 0,

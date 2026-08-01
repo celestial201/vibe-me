@@ -36,11 +36,17 @@ export function ClassroomLeaderboardTab({ classroomId, isInstructor }: Props) {
 
     // Calculate points:
     // 1. Course Completion (+100 pts per 100% completed course)
-    const completedCoursesCount = rosterDoc?.courses?.filter((c: any) => (c.progressPercentage || 0) >= 100).length || 0;
+    const completedCoursesCount =
+      rosterDoc?.completedCoursesCount ||
+      rosterDoc?.courses?.filter((c: any) => (c.progressPercentage || 0) >= 100 || c.isCompleted || c.completed).length ||
+      (rosterDoc?.courseProgress >= 100 ? 1 : 0);
     const coursePoints = completedCoursesCount * 100;
 
     // 2. Assignment Grades
-    const assignmentPoints = rosterDoc?.assignmentStats?.totalGradeObtained || 0;
+    const assignmentPoints =
+      rosterDoc?.assignmentStats?.totalGradeObtained ||
+      rosterDoc?.submissionsList?.reduce((acc: number, s: any) => acc + (s.grade || 0), 0) ||
+      0;
 
     // 3. Journal Completion (+10 pts per filled daily journal)
     const journalPoints = completedJournals.length * 10;
