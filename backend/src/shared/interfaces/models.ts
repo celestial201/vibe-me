@@ -1207,7 +1207,7 @@ export interface IClassroomAnnouncement {
   updatedAt: Date;
 }
 
-export type NotificationType = 'new_assignment' | 'new_announcement' | 'approval_request' | 'due_soon';
+export type NotificationType = 'new_assignment' | 'new_announcement' | 'approval_request' | 'due_soon' | 'course_pushed' | 'course_invitation';
 
 export interface INotification {
   _id?: ID;
