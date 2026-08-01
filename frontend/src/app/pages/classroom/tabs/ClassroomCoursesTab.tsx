@@ -80,13 +80,6 @@ export function ClassroomCoursesTab({ classroomId, isInstructor = false }: Props
             Courses assigned by the instructor to this cohort with real-time progress tracking.
           </p>
         </div>
-
-        {isInstructor && (
-          <Button onClick={() => setIsPushModalOpen(true)} size="sm" className="gap-1.5 shadow-xs">
-            <Plus className="w-4 h-4" />
-            Push Course to Classroom
-          </Button>
-        )}
       </div>
 
       {/* Courses List */}

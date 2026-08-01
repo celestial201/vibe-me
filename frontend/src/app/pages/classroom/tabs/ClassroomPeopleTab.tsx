@@ -137,11 +137,6 @@ export function ClassroomPeopleTab({ classroomId, isInstructor }: Props) {
                 </form>
               </DialogContent>
             </Dialog>
-
-            <Button size="sm" onClick={() => setIsPushModalOpen(true)}>
-              <Send className="w-4 h-4 mr-1.5" />
-              Push Course to Classroom
-            </Button>
           </div>
         )}
       </div>
