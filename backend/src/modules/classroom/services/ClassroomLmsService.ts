@@ -741,16 +741,19 @@ export class ClassroomLmsService {
     const members = await this.classroomRepo.findMembersByClassroom(classroomId);
     if (!members || members.length === 0) return [];
 
-    const isTeacher = classroom.instructorId?.toString() === requesterId;
+    const classroomObjId = ObjectId.isValid(classroomId) ? new ObjectId(classroomId) : null;
+    const classroomIdVariants = classroomObjId ? [classroomId, classroomObjId] : [classroomId];
 
     const assignments = await this.assignmentRepo.findByClassroom(classroomId);
     const submissions = await this.submissionRepo.findByClassroom(classroomId);
     const enrollmentsCol = await this.db.getCollection<any>('classroom_member_enrollments');
-    const enrollments = await enrollmentsCol.find({ classroom_id: classroomId }).toArray();
-
     const classroomCoursesCol = await this.db.getCollection<any>('classroom_courses');
+
     const assignedCourses = await classroomCoursesCol.find({
-      $or: [{ classroom_id: classroomId }, { classroomId }]
+      $or: [
+        { classroom_id: { $in: classroomIdVariants } },
+        { classroomId: { $in: classroomIdVariants } },
+      ],
     }).toArray();
 
     const mainEnrollCol = await this.db.getCollection<any>('enrollment');
@@ -763,7 +766,9 @@ export class ClassroomLmsService {
       const user = await this.userRepo.findById(studentId);
       const studentName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Student';
       const studentEmail = user?.email || '';
-      const userObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : studentId;
+
+      const studentObjId = ObjectId.isValid(studentId) ? new ObjectId(studentId) : null;
+      const studentIdVariants = studentObjId ? [studentId, studentObjId] : [studentId];
 
       const studentSubs = submissions.filter((s) => String(s.student_id) === studentId);
       const subMap = new Map<string, any>();
@@ -783,52 +788,114 @@ export class ClassroomLmsService {
         };
       });
 
+      const [progDocs, enrDocs, memberEnrDocs] = await Promise.all([
+        progressCol.find({
+          $or: [
+            { userId: { $in: studentIdVariants } },
+            { user_id: { $in: studentIdVariants } },
+            { student_id: { $in: studentIdVariants } },
+          ],
+        }).toArray().catch(() => []),
+        mainEnrollCol.find({
+          $or: [
+            { userId: { $in: studentIdVariants } },
+            { user_id: { $in: studentIdVariants } },
+            { student_id: { $in: studentIdVariants } },
+          ],
+        }).toArray().catch(() => []),
+        enrollmentsCol.find({
+          $or: [
+            { student_id: { $in: studentIdVariants } },
+            { studentId: { $in: studentIdVariants } },
+          ],
+        }).toArray().catch(() => []),
+      ]);
+
       const studentCourses: any[] = [];
       let maxProgress = 0;
+      let completedCoursesCount = 0;
+      const completedCourseIds = new Set<string>();
 
-      for (const ac of assignedCourses) {
-        const cId = String(ac.course_id || ac.courseId || '');
-        if (!cId) continue;
-        const cObjId = ObjectId.isValid(cId) ? new ObjectId(cId) : cId;
+      if (assignedCourses && assignedCourses.length > 0) {
+        for (const ac of assignedCourses) {
+          const cId = String(ac.course_id || ac.courseId || ac._id || '');
+          if (!cId) continue;
+          const cObjId = ObjectId.isValid(cId) ? new ObjectId(cId) : null;
+          const cIdVariants = cObjId ? [cId, cObjId] : [cId];
 
-        let pct = 0;
-        try {
-          const [progDoc, enrDoc, memberEnrDoc] = await Promise.all([
-            progressCol.findOne({
-              userId: { $in: [userObjId, studentId] },
-              courseId: { $in: [cObjId, cId] },
-            }),
-            mainEnrollCol.findOne({
-              userId: { $in: [userObjId, studentId] },
-              courseId: { $in: [cObjId, cId] },
-            }),
-            enrollmentsCol.findOne({
-              student_id: { $in: [userObjId, studentId] },
-              course_id: { $in: [cObjId, cId] },
-            }),
-          ]);
-
-          pct = Math.max(
-            progDoc?.percentCompleted || 0,
-            enrDoc?.percentCompleted || 0,
-            memberEnrDoc?.progress || memberEnrDoc?.progress_percentage || 0
+          const pMatch = progDocs.find((d: any) =>
+            cIdVariants.some((v) => String(v) === String(d.courseId || d.course_id || ''))
           );
-        } catch (_) {}
+          const eMatch = enrDocs.find((d: any) =>
+            cIdVariants.some((v) => String(v) === String(d.courseId || d.course_id || ''))
+          );
+          const mMatch = memberEnrDocs.find((d: any) =>
+            cIdVariants.some((v) => String(v) === String(d.course_id || d.courseId || ''))
+          );
 
-        const isCompleted = pct >= 100;
-        studentCourses.push({
-          courseId: cId,
-          progressPercentage: Number(pct.toFixed(2)),
-          isCompleted,
-          completed: isCompleted,
-        });
+          let pct = Math.max(
+            pMatch?.percentCompleted || pMatch?.progress || pMatch?.progress_percentage || 0,
+            eMatch?.percentCompleted || eMatch?.progress || eMatch?.progress_percentage || 0,
+            mMatch?.progress || mMatch?.progress_percentage || mMatch?.percentCompleted || 0
+          );
 
-        if (pct > maxProgress) {
+          const isCompleted =
+            pct >= 100 ||
+            pMatch?.completed === true ||
+            eMatch?.status === 'COMPLETED' ||
+            eMatch?.completed === true ||
+            mMatch?.status === 'COMPLETED';
+
+          if (isCompleted) {
+            pct = 100;
+            completedCourseIds.add(cId);
+          }
+
+          studentCourses.push({
+            courseId: cId,
+            progressPercentage: Number(pct.toFixed(2)),
+            isCompleted,
+            completed: isCompleted,
+          });
+
+          if (pct > maxProgress) {
+            maxProgress = Number(pct.toFixed(2));
+          }
+        }
+      }
+
+      for (const d of progDocs) {
+        const pct = d.percentCompleted || d.progress || 0;
+        if (pct >= 100 || d.completed === true) {
+          maxProgress = 100;
+          const cId = String(d.courseId || d.course_id || '');
+          if (cId) completedCourseIds.add(cId);
+        } else if (pct > maxProgress) {
+          maxProgress = Number(pct.toFixed(2));
+        }
+      }
+      for (const d of enrDocs) {
+        const pct = d.percentCompleted || d.progress || 0;
+        if (pct >= 100 || d.status === 'COMPLETED' || d.completed === true) {
+          maxProgress = 100;
+          const cId = String(d.courseId || d.course_id || '');
+          if (cId) completedCourseIds.add(cId);
+        } else if (pct > maxProgress) {
+          maxProgress = Number(pct.toFixed(2));
+        }
+      }
+      for (const d of memberEnrDocs) {
+        const pct = d.progress || d.progress_percentage || d.percentCompleted || 0;
+        if (pct >= 100 || d.status === 'COMPLETED') {
+          maxProgress = 100;
+          const cId = String(d.course_id || d.courseId || '');
+          if (cId) completedCourseIds.add(cId);
+        } else if (pct > maxProgress) {
           maxProgress = Number(pct.toFixed(2));
         }
       }
 
-      const completedCoursesCount = studentCourses.filter(c => c.progressPercentage >= 100 || c.isCompleted).length;
+      completedCoursesCount = completedCourseIds.size || (maxProgress >= 100 ? 1 : 0);
 
       roster.push({
         studentId,
