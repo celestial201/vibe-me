@@ -297,28 +297,31 @@ export class ClassroomLmsService {
       updatedAt: created.updatedAt,
     };
 
-    emitNewAssignment(classroomId, response);
+    try {
+      emitNewAssignment(classroomId, response);
 
-    // Trigger 1: Bulk insert Notifications for all students
-    const members = await this.classroomRepo.findMembersByClassroom(classroomId);
-    const studentNotifications: Partial<INotification>[] = members.map((m) => ({
-      user_id: m.studentId.toString(),
-      classroom_id: classroomId,
-      type: 'new_assignment',
-      message: `New assignment: "${title}" in "${classroom.title}"`,
-      link: `/classroom/${classroomId}`,
-    }));
-
-    if (studentNotifications.length > 0) {
-      await this.notificationRepo.createBulk(studentNotifications);
-      members.forEach((m) => {
-        const sid = m.studentId.toString();
-        emitNewNotification(sid, {
+      const members = await this.classroomRepo.findMembersByClassroom(classroomId);
+      if (members && members.length > 0) {
+        const studentNotifications: Partial<INotification>[] = members.map((m) => ({
+          user_id: m.studentId.toString(),
+          classroom_id: classroomId,
           type: 'new_assignment',
           message: `New assignment: "${title}" in "${classroom.title}"`,
           link: `/classroom/${classroomId}`,
+        }));
+
+        await this.notificationRepo.createBulk(studentNotifications);
+        members.forEach((m) => {
+          const sid = m.studentId.toString();
+          emitNewNotification(sid, {
+            type: 'new_assignment',
+            message: `New assignment: "${title}" in "${classroom.title}"`,
+            link: `/classroom/${classroomId}`,
+          });
         });
-      });
+      }
+    } catch (notifErr) {
+      console.warn('Assignment created, notification note:', notifErr);
     }
 
     return response;

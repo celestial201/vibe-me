@@ -20,12 +20,15 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedExtensions = ['.pdf', '.docx', '.doc', '.png', '.jpg', '.jpeg', '.webp'];
+  const allowedExtensions = [
+    '.pdf', '.docx', '.doc', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg',
+    '.mp4', '.mov', '.webm', '.zip', '.rar', '.7z', '.txt', '.csv', '.xlsx', '.pptx'
+  ];
   const ext = path.extname(file.originalname).toLowerCase();
-  if (allowedExtensions.includes(ext)) {
+  if (!ext || allowedExtensions.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only PDF, DOCX, and image files are allowed.'));
+    cb(null, true);
   }
 };
 
