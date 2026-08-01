@@ -113,6 +113,7 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
             const isToday = isSameDay(dayDate, today);
             const hasJournal = Boolean(day.journal?.title || day.journal?.journal_entry || day.journal?.content_link);
             const isFilled = completedDays.includes(day.day_number);
+            const isSavedOrFilled = isInstructor ? hasJournal : isFilled;
 
             return (
               <button
@@ -122,15 +123,32 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
                 className={`relative flex flex-col items-center justify-between p-2.5 rounded-xl border text-left transition-all cursor-pointer h-24 hover:scale-105 hover:shadow-md ${
                   isToday
                     ? 'border-primary ring-2 ring-primary/40 bg-primary/10 font-semibold'
-                    : isFilled || hasJournal
+                    : isSavedOrFilled
                     ? 'border-emerald-500/50 bg-emerald-500/5 hover:border-emerald-500'
                     : 'border-border/60 bg-card hover:border-primary/50'
                 }`}
               >
-                {!isFilled && (
+                {isInstructor ? (
+                  hasJournal ? (
+                    <div
+                      className="absolute top-2 right-2 w-2.5 h-2.5 bg-emerald-500 rounded-full shrink-0"
+                      title="Saved Journal Prompt"
+                    />
+                  ) : (
+                    <div
+                      className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shrink-0"
+                      title="Unsaved Journal Prompt"
+                    />
+                  )
+                ) : !isFilled ? (
                   <div
                     className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shrink-0"
                     title="Unfilled Journal"
+                  />
+                ) : (
+                  <div
+                    className="absolute top-2 right-2 w-2.5 h-2.5 bg-emerald-500 rounded-full shrink-0"
+                    title="Completed Journal"
                   />
                 )}
 
@@ -155,7 +173,7 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
                 </div>
 
                 <div className="w-full flex items-center justify-center pt-1 border-t border-border/30">
-                  {isFilled || hasJournal ? (
+                  {isSavedOrFilled ? (
                     <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                   ) : (
                     <Clock className="w-3 h-3 text-muted-foreground/40" />
@@ -171,9 +189,16 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
       <Dialog open={Boolean(selectedDay)} onOpenChange={(open) => !open && setSelectedDay(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <CalendarIcon className="w-4 h-4 text-primary" />
-              Day {selectedDay?.day_number} — {selectedDay?.date && format(new Date(selectedDay.date), 'EEEE, MMMM d, yyyy')}
+            <DialogTitle className="flex items-center justify-between text-base flex-wrap gap-2 pr-6">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="w-4 h-4 text-primary" />
+                Day {selectedDay?.day_number} — {selectedDay?.date && format(new Date(selectedDay.date), 'EEEE, MMMM d, yyyy')}
+              </div>
+              {isInstructor && Boolean(selectedDay?.journal?.title || selectedDay?.journal?.journal_entry || selectedDay?.journal?.content_link) && (
+                <Badge className="bg-emerald-600 text-white text-[10px] gap-1 px-2 py-0.5">
+                  <CheckCircle2 className="w-3 h-3" /> Saved
+                </Badge>
+              )}
             </DialogTitle>
             <DialogDescription className="text-xs">
               {isInstructor
@@ -218,8 +243,11 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
                 <Button type="button" variant="outline" onClick={() => setSelectedDay(null)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={upsertJournalMutation.isPending}>
-                  Save Entry
+                <Button type="submit" disabled={upsertJournalMutation.isPending} className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {Boolean(selectedDay?.journal?.title || selectedDay?.journal?.journal_entry || selectedDay?.journal?.content_link)
+                    ? 'Update Entry'
+                    : 'Save Entry'}
                 </Button>
               </div>
             </form>
