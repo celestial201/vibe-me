@@ -372,6 +372,17 @@ export const classroomLmsApi = {
     if (!res.ok) throw new Error('Failed to mark notification as read');
   },
 
+  markAllNotificationsRead: async (classroomId?: string): Promise<void> => {
+    const url = classroomId
+      ? `${BASE_URL}/notifications/read-all?classroomId=${encodeURIComponent(classroomId)}`
+      : `${BASE_URL}/notifications/read-all`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to mark all notifications as read');
+  },
+
   // Push Course & Student Analytics
   getMyVibeCourses: async (): Promise<VibeCourseDTO[]> => {
     const res = await fetch(`${BASE_URL}/courses/my-courses`, {

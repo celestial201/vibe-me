@@ -5,10 +5,12 @@ import { useAuthStore } from '@/store/auth-store';
 import {
   useGetNotifications,
   useMarkNotificationRead,
+  useMarkAllNotificationsRead,
   useNotificationsSocket,
   getSocketClient,
   LMS_CK,
 } from '@/hooks/classroom-lms-hooks';
+import { NotificationDTO } from '@/services/classroom-lms-api';
 import { Button } from '@/components/ui/button';
 import { Bell, Clock, BookOpen, MessageSquare, AlertCircle, Sparkles } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -24,6 +26,7 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [hasUnreadSocket, setHasUnreadSocket] = useState(false);
+  const [displayedNotifications, setDisplayedNotifications] = useState<NotificationDTO[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Socket listener for real-time unread updates
@@ -31,6 +34,7 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
 
   const { data: notifications = [] } = useGetNotifications(classroomId);
   const markReadMutation = useMarkNotificationRead();
+  const markAllReadMutation = useMarkAllNotificationsRead();
 
   const unreadCount = notifications.length;
   const showUnreadBadge = unreadCount > 0 || hasUnreadSocket;
@@ -78,15 +82,32 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
+        setDisplayedNotifications([]);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Sync displayed notifications & mark as read when notifications arrive while open
+  useEffect(() => {
+    if (isOpen && notifications.length > 0) {
+      setDisplayedNotifications((prev) => {
+        const existingIds = new Set(prev.map((n) => n._id));
+        const newItems = notifications.filter((n) => !existingIds.has(n._id));
+        if (newItems.length > 0) {
+          markAllReadMutation.mutate(classroomId);
+          return [...newItems, ...prev];
+        }
+        return prev;
+      });
+    }
+  }, [isOpen, notifications, classroomId]);
+
   const handleNotificationClick = async (id: string, link: string) => {
     setIsOpen(false);
     setHasUnreadSocket(false);
+    setDisplayedNotifications([]);
     await markReadMutation.mutateAsync(id);
     if (link) {
       navigate({ to: link as any }).catch(() => {
@@ -96,8 +117,19 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
   };
 
   const handleToggleOpen = () => {
-    setIsOpen((prev) => !prev);
-    setHasUnreadSocket(false);
+    setIsOpen((prev) => {
+      const nextOpen = !prev;
+      if (nextOpen) {
+        if (notifications.length > 0) {
+          setDisplayedNotifications(notifications);
+          markAllReadMutation.mutate(classroomId);
+        }
+        setHasUnreadSocket(false);
+      } else {
+        setDisplayedNotifications([]);
+      }
+      return nextOpen;
+    });
   };
 
   const getIcon = (type: string) => {
@@ -115,6 +147,8 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
         return <Bell className="w-4 h-4 text-primary" />;
     }
   };
+
+  const listToRender = isOpen && displayedNotifications.length > 0 ? displayedNotifications : notifications;
 
   return (
     <div className="relative inline-block" ref={containerRef}>
@@ -140,17 +174,17 @@ export function NotificationBell({ classroomId }: NotificationBellProps = {}) {
               <h4 className="font-semibold text-sm">Notifications</h4>
             </div>
             <span className="text-xs text-muted-foreground font-medium">
-              {unreadCount} unread
+              {listToRender.length > 0 ? `${listToRender.length} unread` : '0 unread'}
             </span>
           </div>
 
           <div className="max-h-80 overflow-y-auto divide-y divide-border/30">
-            {notifications.length === 0 ? (
+            {listToRender.length === 0 ? (
               <div className="p-8 text-center text-xs text-muted-foreground">
                 No unread notifications
               </div>
             ) : (
-              notifications.map((n) => (
+              listToRender.map((n) => (
                 <button
                   key={n._id}
                   type="button"

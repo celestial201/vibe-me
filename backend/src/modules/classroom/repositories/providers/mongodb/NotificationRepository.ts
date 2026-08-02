@@ -103,6 +103,37 @@ export class NotificationRepository {
     return result.modifiedCount > 0;
   }
 
+  async markAllAsRead(userId: string, classroomId?: string): Promise<boolean> {
+    await this.init();
+    const uOid = toObjectId(userId);
+    const cOid = classroomId ? toObjectId(classroomId) : undefined;
+
+    const queryConditions: any[] = [
+      {
+        $or: [
+          { user_id: userId },
+          ...(uOid && uOid !== userId ? [{ user_id: uOid }] : []),
+        ],
+      },
+      { is_read: false },
+    ];
+
+    if (classroomId) {
+      queryConditions.push({
+        $or: [
+          { classroom_id: classroomId },
+          ...(cOid && cOid !== classroomId ? [{ classroom_id: cOid }] : []),
+        ],
+      });
+    }
+
+    const result = await this.notifications.updateMany(
+      { $and: queryConditions } as any,
+      { $set: { is_read: true } }
+    );
+    return result.modifiedCount > 0;
+  }
+
   private _map = (doc: any): INotification => ({
     ...doc,
     _id: doc._id?.toString(),

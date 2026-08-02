@@ -352,6 +352,16 @@ export function useMarkNotificationRead() {
   });
 }
 
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (classroomId?: string) => classroomLmsApi.markAllNotificationsRead(classroomId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: LMS_CK.notifications() });
+    },
+  });
+}
+
 // ── Push Course & Student Analytics Hooks ────────────────────────────────────
 
 export function useGetMyVibeCourses() {

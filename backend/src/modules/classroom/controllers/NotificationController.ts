@@ -24,6 +24,17 @@ export class NotificationController {
     return this.notificationRepo.findUnreadByUser(userId, classroomId);
   }
 
+  @OpenAPI({ summary: 'Mark all notifications as read' })
+  @Patch('/read-all')
+  async markAllAsRead(
+    @CurrentUser() user: IUser,
+    @QueryParam('classroomId') classroomId?: string,
+  ) {
+    const userId = user._id?.toString() ?? '';
+    const success = await this.notificationRepo.markAllAsRead(userId, classroomId);
+    return { success };
+  }
+
   @OpenAPI({ summary: 'Mark notification as read' })
   @Patch('/:id/read')
   async markAsRead(@Param('id') id: string, @CurrentUser() user: IUser) {
