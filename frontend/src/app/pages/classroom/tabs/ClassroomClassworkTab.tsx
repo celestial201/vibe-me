@@ -536,90 +536,198 @@ function AssignmentCard({
             ) : (
               <div className="divide-y divide-border/40">
                 {submissions.map((sub) => (
-                  <div key={sub._id} className="py-2 flex items-center justify-between text-xs flex-wrap gap-2">
-                    <div>
-                      <span className="font-medium text-foreground">{sub.studentName || 'Student'}</span>
-                      <span className="ml-2 text-muted-foreground">({sub.studentEmail})</span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant={sub.status === 'returned' ? 'default' : 'secondary'} className="text-[10px]">
-                          {sub.status}
-                        </Badge>
-                        {new Date(sub.submitted_at || sub.createdAt || 0) > dueDate && (
-                          <Badge className="bg-red-600 text-white text-[9px] px-1.5 py-0">
-                            Submitted Late
+                  <div key={sub._id} className="py-3 space-y-2.5 text-xs">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <span className="font-medium text-foreground">{sub.studentName || 'Student'}</span>
+                        <span className="ml-2 text-muted-foreground">({sub.studentEmail})</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <Badge variant={sub.status === 'returned' ? 'default' : 'secondary'} className="text-[10px]">
+                            {sub.status}
                           </Badge>
-                        )}
-                        {sub.grade !== undefined && (
-                          <span className="font-semibold text-primary">Score: {sub.grade}/{assignment.points}</span>
-                        )}
+                          {new Date(sub.submitted_at || sub.createdAt || 0) > dueDate && (
+                            <Badge className="bg-red-600 text-white text-[9px] px-1.5 py-0">
+                              Submitted Late
+                            </Badge>
+                          )}
+                          {sub.grade !== undefined && (
+                            <span className="font-semibold text-primary">Score: {sub.grade}/{assignment.points}</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
 
-                    <Dialog open={selectedSubId === sub._id} onOpenChange={(open) => !open && setSelectedSubId(null)}>
-                      <DialogTrigger asChild>
-                        <Button
-                          size="xs"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedSubId(sub._id);
-                            setGradeInput(sub.grade ?? assignment.points);
-                            setFeedbackInput(sub.teacher_feedback ?? '');
-                          }}
-                        >
-                          <Award className="w-3 h-3 mr-1" />
-                          {sub.status === 'returned' ? 'Regrade' : 'Grade & Return'}
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Grade Submission - {sub.studentName}</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4 pt-2">
-                          <div>
-                            <label className="text-xs font-medium">Submitted Files</label>
-                            <div className="mt-1 space-y-1">
-                              {sub.submitted_files?.map((f, i) => (
-                                <a
-                                  key={i}
-                                  href={`${import.meta.env.VITE_SOCKET_URL || 'http://localhost:3141'}${f}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-xs text-primary underline block"
-                                >
-                                  {f.split('-').pop()}
-                                </a>
-                              )) || <p className="text-xs text-muted-foreground">No files attached</p>}
+                      <Dialog open={selectedSubId === sub._id} onOpenChange={(open) => !open && setSelectedSubId(null)}>
+                        <DialogTrigger asChild>
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedSubId(sub._id);
+                              setGradeInput(sub.grade ?? assignment.points);
+                              setFeedbackInput(sub.teacher_feedback ?? '');
+                            }}
+                          >
+                            <Award className="w-3 h-3 mr-1" />
+                            {sub.status === 'returned' ? 'Regrade' : 'Grade & Return'}
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Grade Submission - {sub.studentName}</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4 pt-2">
+                            <div>
+                              <label className="text-xs font-medium block mb-1">Submitted Files</label>
+                              {sub.submitted_files && sub.submitted_files.length > 0 ? (
+                                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                                  {sub.submitted_files.map((f, i) => {
+                                    const fullUrl = getAttachmentUrl(f);
+                                    const fileName = getAttachmentName(f);
+                                    const isPdf = isPdfAttachment(f);
+                                    const isImg = isImageAttachment(f);
+                                    return (
+                                      <div
+                                        key={i}
+                                        className="flex items-center justify-between gap-2 p-2 rounded border border-border/60 bg-muted/20 text-xs"
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                          {isPdf ? (
+                                            <FileText className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                                          ) : isImg ? (
+                                            <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                          ) : (
+                                            <Paperclip className="w-3.5 h-3.5 text-primary shrink-0" />
+                                          )}
+                                          <span className="truncate font-medium text-[11px]" title={fileName}>
+                                            {fileName}
+                                          </span>
+                                        </div>
+                                        <Button size="xs" variant="outline" className="h-6 text-[10px] gap-1 shrink-0 px-2" asChild>
+                                          <a href={fullUrl} target="_blank" rel="noreferrer">
+                                            <Download className="w-3 h-3" />
+                                            View / Open
+                                          </a>
+                                        </Button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-muted-foreground italic">No files attached</p>
+                              )}
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium">Grade (Max {assignment.points})</label>
+                              <Input
+                                type="number"
+                                max={assignment.points}
+                                value={gradeInput}
+                                onChange={(e) => setGradeInput(Number(e.target.value))}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-medium">Teacher Feedback</label>
+                              <Textarea
+                                placeholder="Provide feedback..."
+                                value={feedbackInput}
+                                onChange={(e) => setFeedbackInput(e.target.value)}
+                                rows={2}
+                              />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <Button type="button" variant="outline" onClick={() => setSelectedSubId(null)}>
+                                Cancel
+                              </Button>
+                              <Button onClick={() => handleGradeSubmit(sub._id)}>
+                                Return Grade
+                              </Button>
                             </div>
                           </div>
-                          <div>
-                            <label className="text-xs font-medium">Grade (Max {assignment.points})</label>
-                            <Input
-                              type="number"
-                              max={assignment.points}
-                              value={gradeInput}
-                              onChange={(e) => setGradeInput(Number(e.target.value))}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-medium">Teacher Feedback</label>
-                            <Textarea
-                              placeholder="Provide feedback..."
-                              value={feedbackInput}
-                              onChange={(e) => setFeedbackInput(e.target.value)}
-                              rows={2}
-                            />
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <Button type="button" variant="outline" onClick={() => setSelectedSubId(null)}>
-                              Cancel
-                            </Button>
-                            <Button onClick={() => handleGradeSubmit(sub._id)}>
-                              Return Grade
-                            </Button>
-                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+
+                    {/* Student Submitted Documents Display */}
+                    {sub.submitted_files && sub.submitted_files.length > 0 ? (
+                      <div className="pt-1 space-y-1.5">
+                        <span className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                          <Paperclip className="w-3.5 h-3.5 text-primary" />
+                          Submitted Document{sub.submitted_files.length > 1 ? 's' : ''} ({sub.submitted_files.length}):
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {sub.submitted_files.map((f, i) => {
+                            const fullUrl = getAttachmentUrl(f);
+                            const fileName = getAttachmentName(f);
+                            const isImg = isImageAttachment(f);
+                            const isPdf = isPdfAttachment(f);
+
+                            return (
+                              <div
+                                key={i}
+                                className="p-2 rounded-lg border border-border/60 bg-muted/20 hover:bg-muted/40 transition group"
+                              >
+                                {isImg ? (
+                                  <div className="space-y-1.5">
+                                    <a
+                                      href={fullUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block overflow-hidden rounded border border-border/40 max-h-36 bg-black/10"
+                                    >
+                                      <img
+                                        src={fullUrl}
+                                        alt={fileName}
+                                        className="w-full object-cover max-h-36 group-hover:scale-105 transition-transform duration-200"
+                                      />
+                                    </a>
+                                    <div className="flex items-center justify-between gap-2 text-xs">
+                                      <span className="truncate font-medium text-foreground text-[11px]" title={fileName}>
+                                        {fileName}
+                                      </span>
+                                      <Button size="xs" variant="ghost" className="h-6 text-[10px] gap-1 text-primary shrink-0" asChild>
+                                        <a href={fullUrl} target="_blank" rel="noreferrer">
+                                          View Image
+                                        </a>
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between gap-2 text-xs">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                      {isPdf ? (
+                                        <div className="w-7 h-7 rounded bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0">
+                                          <FileText className="w-4 h-4" />
+                                        </div>
+                                      ) : (
+                                        <div className="w-7 h-7 rounded bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                          <Paperclip className="w-4 h-4" />
+                                        </div>
+                                      )}
+                                      <div className="min-w-0">
+                                        <p className="font-medium text-foreground text-[11px] truncate" title={fileName}>
+                                          {fileName}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground uppercase font-mono">
+                                          {isPdf ? 'PDF Document' : 'Attachment'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <Button size="xs" variant="outline" className="h-7 text-[11px] gap-1 shrink-0" asChild>
+                                      <a href={fullUrl} target="_blank" rel="noreferrer">
+                                        <Download className="w-3 h-3" />
+                                        View / Open
+                                      </a>
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
-                      </DialogContent>
-                    </Dialog>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground italic">No documents attached to this submission.</p>
+                    )}
                   </div>
                 ))}
               </div>
