@@ -1192,16 +1192,8 @@ export class ClassroomLmsService {
         }
       }
 
-      // Fallback: If classroom_members and enrolledStudentEmails are not populated, query registered student accounts directly
-      if (targetStudents.length === 0) {
-        targetStudents = await usersCol.find({
-          $or: [
-            { role: { $in: ['STUDENT', 'student'] } },
-            { roles: { $in: ['STUDENT', 'student'] } },
-            { roles: { $nin: ['admin', 'ADMIN'] } },
-          ],
-        }).toArray();
-      }
+      // Do NOT mass-invite all registered students automatically if classroom has no members.
+      // Students should only join classrooms by entering the join code themselves.
 
       for (const student of targetStudents) {
         if (!student || !student.email) continue;
@@ -1347,9 +1339,13 @@ export class ClassroomLmsService {
       queryFilters.push({ userId: { $in: [userObjId, userIdStr] } });
     }
 
+    if (queryFilters.length === 0) {
+      return [];
+    }
+
     const pendingInvites = await invitesCol
       .find({
-        $or: queryFilters.length > 0 ? queryFilters : [{ inviteStatus: 'PENDING' }],
+        $or: queryFilters,
         inviteStatus: 'PENDING',
       })
       .sort({ createdAt: -1 })

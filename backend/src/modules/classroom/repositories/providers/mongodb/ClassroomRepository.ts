@@ -137,17 +137,22 @@ export class ClassroomRepository implements IClassroomRepository {
 
   async addMember(member: IClassroomMember): Promise<IClassroomMember> {
     await this.init();
+    const sIdStr = member.studentId ? String(member.studentId).trim() : '';
+    const cIdStr = member.classroomId ? String(member.classroomId).trim() : '';
+    if (!sIdStr || sIdStr === 'undefined' || sIdStr === 'null' || !cIdStr || cIdStr === 'undefined' || cIdStr === 'null') {
+      throw new Error('Invalid studentId or classroomId provided for addMember');
+    }
     const doc = {
       ...member,
-      classroomId: toObjectId(member.classroomId as string),
-      studentId: toObjectId(member.studentId as string),
+      classroomId: toObjectId(cIdStr),
+      studentId: toObjectId(sIdStr),
     };
     try {
       const result = await this.members.insertOne(doc as any);
       return { ...member, _id: result.insertedId.toString() };
     } catch (err: any) {
       if (err?.code === 11000) {
-        const existing = await this.findMember(member.classroomId?.toString() ?? '', member.studentId?.toString() ?? '');
+        const existing = await this.findMember(cIdStr, sIdStr);
         if (existing) return existing;
       }
 

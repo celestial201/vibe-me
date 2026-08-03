@@ -182,7 +182,8 @@ export class ClassroomService {
   // ── Student ───────────────────────────────────────────────────────────────
 
   async joinClassroom(code: string, studentId: string): Promise<ClassroomResponse> {
-    if (!studentId || !studentId.trim()) {
+    const sId = String(studentId || '').trim();
+    if (!sId || sId === 'undefined' || sId === 'null') {
       throw new UnauthorizedError('Invalid user session. Please log in again.');
     }
     const classroom = await this.repo.findByCode(code.toUpperCase());

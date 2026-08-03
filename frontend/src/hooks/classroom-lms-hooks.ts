@@ -27,6 +27,7 @@ export const LMS_CK = {
   insights: (classroomId: string, studentId: string) => ['classroom', classroomId, 'students', studentId, 'insights'] as const,
   calendar: (classroomId: string) => ['classroom', classroomId, 'calendar'] as const,
   completedJournals: (classroomId: string) => ['journal-submissions', classroomId] as const,
+  journalSubmissions: (classroomId: string, dayNumber?: number) => ['journal-submissions-list', classroomId, dayNumber] as const,
   notifications: (classroomId?: string) => ['notifications', classroomId || 'global'] as const,
   analyticsRoster: (classroomId: string) => ['classroom', classroomId, 'analytics-roster'] as const,
   myVibeCourses: () => ['my-vibe-courses'] as const,
@@ -320,15 +321,29 @@ export function useGetCompletedJournals(classroomId: string) {
 export function useMarkJournalComplete(classroomId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (dayNumber: number) => classroomLmsApi.markJournalComplete(classroomId, dayNumber),
-    onSuccess: (_, dayNumber) => {
+    mutationFn: (params: { dayNumber: number; data?: { content_link?: string; journal_entry?: string } } | number) => {
+      const dayNum = typeof params === 'number' ? params : params.dayNumber;
+      const data = typeof params === 'number' ? undefined : params.data;
+      return classroomLmsApi.markJournalComplete(classroomId, dayNum, data);
+    },
+    onSuccess: (_, variables) => {
+      const dayNumber = typeof variables === 'number' ? variables : variables.dayNumber;
       qc.setQueryData<number[]>(LMS_CK.completedJournals(classroomId), (old = []) => {
         return old.includes(dayNumber) ? old : [...old, dayNumber];
       });
       qc.invalidateQueries({ queryKey: LMS_CK.completedJournals(classroomId) });
+      qc.invalidateQueries({ queryKey: ['journal-submissions-list', classroomId] });
       toast.success(`Day ${dayNumber} journal marked as filled!`);
     },
     onError: (err: any) => toast.error(err.message || 'Failed to mark journal as filled'),
+  });
+}
+
+export function useGetJournalSubmissions(classroomId: string, dayNumber?: number, enabled = true) {
+  return useQuery({
+    queryKey: LMS_CK.journalSubmissions(classroomId, dayNumber),
+    queryFn: () => classroomLmsApi.getJournalSubmissions(classroomId, dayNumber),
+    enabled: Boolean(classroomId) && enabled,
   });
 }
 

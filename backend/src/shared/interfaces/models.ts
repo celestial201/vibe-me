@@ -1157,6 +1157,10 @@ export interface IJournalSubmission {
   classroom_id: ID;
   day_number: number;
   is_completed: boolean;
+  content_link?: string;
+  journal_entry?: string;
+  student_name?: string;
+  student_email?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }

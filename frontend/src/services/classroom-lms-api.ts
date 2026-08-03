@@ -99,6 +99,20 @@ export interface InternshipCalendarDTO {
   days: InternshipCalendarDayDTO[];
 }
 
+export interface JournalSubmissionDTO {
+  _id?: string;
+  student_id: string;
+  classroom_id: string;
+  day_number: number;
+  is_completed: boolean;
+  content_link?: string;
+  journal_entry?: string;
+  student_name?: string;
+  student_email?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface NotificationDTO {
   _id: string;
   user_id: string;
@@ -335,13 +349,28 @@ export const classroomLmsApi = {
   markJournalComplete: async (
     classroomId: string,
     dayNumber: number,
+    data?: { content_link?: string; journal_entry?: string }
   ): Promise<{ success: boolean; submission: any }> => {
     const res = await fetch(`${BASE_URL}/classroom/${classroomId}/journal/${dayNumber}/complete`, {
       method: 'POST',
-      headers: getAuthHeaders(),
+      headers: {
+        ...getAuthHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data || {}),
     });
     if (!res.ok) throw new Error('Failed to mark journal as filled');
     return res.json();
+  },
+
+  getJournalSubmissions: async (classroomId: string, dayNumber?: number): Promise<JournalSubmissionDTO[]> => {
+    const query = dayNumber !== undefined && dayNumber !== null ? `?day=${dayNumber}` : '';
+    const res = await fetch(`${BASE_URL}/classroom/${classroomId}/journal/submissions${query}`, {
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to fetch journal submissions');
+    const json = await res.json();
+    return json.submissions || [];
   },
 
   getCompletedJournals: async (classroomId: string): Promise<{ completedDays: number[] }> => {

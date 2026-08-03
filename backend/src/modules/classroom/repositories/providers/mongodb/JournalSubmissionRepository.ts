@@ -28,7 +28,12 @@ export class JournalSubmissionRepository {
     );
   }
 
-  async markCompleted(studentId: string, classroomId: string, dayNumber: number): Promise<IJournalSubmission> {
+  async markCompleted(
+    studentId: string,
+    classroomId: string,
+    dayNumber: number,
+    data?: { content_link?: string; journal_entry?: string; student_name?: string; student_email?: string }
+  ): Promise<IJournalSubmission> {
     await this.init();
     const sOid = toObjectId(studentId);
     const cOid = toObjectId(classroomId);
@@ -39,14 +44,21 @@ export class JournalSubmissionRepository {
       day_number: Number(dayNumber),
     };
 
+    const updateSet: any = {
+      student_id: sOid || studentId,
+      classroom_id: cOid || classroomId,
+      day_number: Number(dayNumber),
+      is_completed: true,
+      updatedAt: new Date(),
+    };
+
+    if (data?.content_link !== undefined) updateSet.content_link = data.content_link;
+    if (data?.journal_entry !== undefined) updateSet.journal_entry = data.journal_entry;
+    if (data?.student_name !== undefined) updateSet.student_name = data.student_name;
+    if (data?.student_email !== undefined) updateSet.student_email = data.student_email;
+
     const update = {
-      $set: {
-        student_id: sOid || studentId,
-        classroom_id: cOid || classroomId,
-        day_number: Number(dayNumber),
-        is_completed: true,
-        updatedAt: new Date(),
-      },
+      $set: updateSet,
       $setOnInsert: {
         createdAt: new Date(),
       },
@@ -64,6 +76,34 @@ export class JournalSubmissionRepository {
       student_id: result?.student_id?.toString(),
       classroom_id: result?.classroom_id?.toString(),
     } as IJournalSubmission;
+  }
+
+  async findSubmissionsByClassroom(
+    classroomId: string,
+    dayNumber?: number
+  ): Promise<IJournalSubmission[]> {
+    await this.init();
+    const cOid = toObjectId(classroomId);
+    const query: any = {
+      $or: [
+        { classroom_id: classroomId },
+        ...(cOid && cOid !== classroomId ? [{ classroom_id: cOid }] : []),
+      ],
+      is_completed: true,
+    };
+
+    if (typeof dayNumber === 'number' && !isNaN(dayNumber)) {
+      query.day_number = dayNumber;
+    }
+
+    const docs = await this.submissions.find(query).sort({ updatedAt: -1 }).toArray();
+
+    return docs.map(d => ({
+      ...d,
+      _id: d._id?.toString(),
+      student_id: d.student_id?.toString(),
+      classroom_id: d.classroom_id?.toString(),
+    }));
   }
 
   async findCompletedDays(studentId: string, classroomId: string): Promise<number[]> {

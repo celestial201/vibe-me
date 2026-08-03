@@ -11,6 +11,7 @@ import {
   Params,
   Patch,
   Post,
+  QueryParam,
   Req,
   UseBefore,
 } from 'routing-controllers';
@@ -219,13 +220,21 @@ export class ClassroomLmsController {
   async markJournalComplete(
     @Params() params: ClassroomIdParams,
     @Param('day') day: number,
+    @Body() body: { content_link?: string; journal_entry?: string },
     @CurrentUser() user: IUser,
   ) {
     const studentId = user._id?.toString() ?? '';
+    const studentName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || 'Student';
     const submission = await this.journalSubmissionRepo.markCompleted(
       studentId,
       params.id,
-      Number(day)
+      Number(day),
+      {
+        content_link: body?.content_link,
+        journal_entry: body?.journal_entry,
+        student_name: studentName,
+        student_email: user.email,
+      }
     );
     return { success: true, submission };
   }
@@ -239,6 +248,20 @@ export class ClassroomLmsController {
     const studentId = user._id?.toString() ?? '';
     const completedDays = await this.journalSubmissionRepo.findCompletedDays(studentId, params.id);
     return { completedDays };
+  }
+
+  @OpenAPI({ summary: 'Get student journal submissions for a classroom and optional day (Teacher)' })
+  @Get('/:id/journal/submissions')
+  async getJournalSubmissions(
+    @Params() params: ClassroomIdParams,
+    @QueryParam('day') day?: number,
+    @CurrentUser() user?: IUser,
+  ) {
+    const submissions = await this.journalSubmissionRepo.findSubmissionsByClassroom(
+      params.id,
+      day !== undefined && day !== null && !isNaN(Number(day)) ? Number(day) : undefined
+    );
+    return { success: true, submissions };
   }
 
   // ── Submissions & Grading ───────────────────────────────────────────────────

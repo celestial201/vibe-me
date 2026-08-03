@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import {
   useGetInternshipCalendar,
   useUpsertDailyJournal,
   useGetCompletedJournals,
   useMarkJournalComplete,
+  useGetJournalSubmissions,
   InternshipCalendarDayDTO,
 } from '@/hooks/classroom-lms-hooks';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -30,12 +32,20 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
   const [title, setTitle] = useState('');
   const [contentLink, setContentLink] = useState('');
   const [journalEntry, setJournalEntry] = useState('');
+  const [linkError, setLinkError] = useState('');
+
+  const { data: daySubmissions = [] } = useGetJournalSubmissions(
+    classroomId,
+    selectedDay?.day_number,
+    isInstructor && Boolean(selectedDay)
+  );
 
   const handleOpenDay = (day: InternshipCalendarDayDTO) => {
     setSelectedDay(day);
     setTitle(day.journal?.title || '');
     setContentLink(day.journal?.content_link || '');
     setJournalEntry(day.journal?.journal_entry || '');
+    setLinkError('');
   };
 
   const handleSaveJournal = async (e: React.FormEvent) => {
@@ -208,49 +218,110 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
           </DialogHeader>
 
           {isInstructor ? (
-            /* Teacher Edit Form */
-            <form onSubmit={handleSaveJournal} className="space-y-4 pt-2">
-              <div>
-                <label className="text-xs font-medium">Day Goal / Title</label>
-                <Input
-                  placeholder="e.g. Day 15: Introduction to MongoDB Indexing"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
-              </div>
+            /* Teacher Edit Form & Student Submissions View */
+            <div className="space-y-6 pt-2">
+              <form onSubmit={handleSaveJournal} className="space-y-4">
+                <div>
+                  <label className="text-xs font-medium">Day Goal / Title</label>
+                  <Input
+                    placeholder="e.g. Day 15: Introduction to MongoDB Indexing"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                  />
+                </div>
 
-              <div>
-                <label className="text-xs font-medium">Resource Link (Optional)</label>
-                <Input
-                  type="url"
-                  placeholder="https://example.com/lecture-notes"
-                  value={contentLink}
-                  onChange={(e) => setContentLink(e.target.value)}
-                />
-              </div>
+                <div>
+                  <label className="text-xs font-medium">Resource Link (Optional)</label>
+                  <Input
+                    type="url"
+                    placeholder="https://example.com/lecture-notes"
+                    value={contentLink}
+                    onChange={(e) => setContentLink(e.target.value)}
+                  />
+                </div>
 
-              <div>
-                <label className="text-xs font-medium">Journal Instructions & Prompts</label>
-                <Textarea
-                  placeholder="Write daily learning goals, questions, or instructions for students..."
-                  value={journalEntry}
-                  onChange={(e) => setJournalEntry(e.target.value)}
-                  rows={4}
-                />
-              </div>
+                <div>
+                  <label className="text-xs font-medium">Journal Instructions & Prompts</label>
+                  <Textarea
+                    placeholder="Write daily learning goals, questions, or instructions for students..."
+                    value={journalEntry}
+                    onChange={(e) => setJournalEntry(e.target.value)}
+                    rows={3}
+                  />
+                </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setSelectedDay(null)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={upsertJournalMutation.isPending} className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  {Boolean(selectedDay?.journal?.title || selectedDay?.journal?.journal_entry || selectedDay?.journal?.content_link)
-                    ? 'Update Entry'
-                    : 'Save Entry'}
-                </Button>
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button type="button" variant="outline" onClick={() => setSelectedDay(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={upsertJournalMutation.isPending} className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {Boolean(selectedDay?.journal?.title || selectedDay?.journal?.journal_entry || selectedDay?.journal?.content_link)
+                      ? 'Update Entry'
+                      : 'Save Entry'}
+                  </Button>
+                </div>
+              </form>
+
+              {/* Student Submissions List & Document Evaluation Links */}
+              <div className="border-t border-border/60 pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-primary" />
+                    Student Submissions (Day {selectedDay?.day_number})
+                  </h4>
+                  <Badge variant="secondary" className="text-xs">
+                    {daySubmissions.length} Submitted
+                  </Badge>
+                </div>
+
+                {daySubmissions.length === 0 ? (
+                  <div className="text-xs text-muted-foreground bg-muted/40 p-3 rounded-md border border-border/40 text-center">
+                    No students have submitted a journal entry or document link for Day {selectedDay?.day_number} yet.
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                    {daySubmissions.map((sub, idx) => (
+                      <div key={sub._id || idx} className="p-3 rounded-lg border border-border/60 bg-muted/30 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-semibold text-xs text-foreground block">
+                              {sub.student_name || 'Student'}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {sub.student_email}
+                            </span>
+                          </div>
+                          <Badge className="bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 text-[10px]">
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> Submitted
+                          </Badge>
+                        </div>
+
+                        {sub.journal_entry && (
+                          <p className="text-xs text-muted-foreground bg-background/50 p-2 rounded border border-border/40 whitespace-pre-wrap">
+                            {sub.journal_entry}
+                          </p>
+                        )}
+
+                        {sub.content_link && (
+                          <div className="pt-1 flex items-center gap-2 flex-wrap">
+                            <a
+                              href={sub.content_link.startsWith('http') ? sub.content_link : `https://${sub.content_link}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-md text-xs font-semibold transition-colors"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Open & Evaluate Submitted Document / Link
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </form>
+            </div>
           ) : (
             /* Student View & Journal Submission */
             <div className="space-y-4 pt-2 text-sm">
@@ -290,14 +361,25 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
                 </div>
 
                 <div>
-                  <label className="text-xs font-medium text-foreground block mb-1">Attachment / Project Link (Optional)</label>
+                  <label className="text-xs font-medium text-foreground block mb-1">
+                    Attachment / Project Link <span className="text-destructive font-bold">*</span>
+                  </label>
                   <Input
                     type="url"
-                    placeholder="https://github.com/my-repo or Drive link..."
+                    placeholder="https://github.com/my-repo or Drive link... (Required)"
                     value={contentLink}
-                    onChange={(e) => setContentLink(e.target.value)}
-                    className="text-xs h-8"
+                    onChange={(e) => {
+                      setContentLink(e.target.value);
+                      if (linkError) setLinkError('');
+                    }}
+                    className={`text-xs h-8 ${linkError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                    required
                   />
+                  {linkError && (
+                    <p className="text-[11px] text-destructive mt-1 font-medium">
+                      {linkError}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -308,17 +390,30 @@ export function ClassroomCalendarTab({ classroomId, isInstructor = false }: Prop
                   className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 text-xs"
                   onClick={async () => {
                     if (selectedDay) {
-                      if (journalEntry.trim() || contentLink.trim()) {
-                        await upsertJournalMutation.mutateAsync({
-                          dayNumber: selectedDay.day_number,
-                          data: {
-                            title: title || `Day ${selectedDay.day_number} Reflection`,
-                            content_link: contentLink,
-                            journal_entry: journalEntry,
-                          },
-                        });
+                      const trimmedLink = contentLink.trim();
+                      if (!trimmedLink) {
+                        const errMsg = 'A document/project link is required to submit your journal entry.';
+                        setLinkError(errMsg);
+                        toast.error(errMsg);
+                        return;
                       }
-                      await markCompleteMutation.mutateAsync(selectedDay.day_number);
+
+                      setLinkError('');
+                      await upsertJournalMutation.mutateAsync({
+                        dayNumber: selectedDay.day_number,
+                        data: {
+                          title: title || `Day ${selectedDay.day_number} Reflection`,
+                          content_link: trimmedLink,
+                          journal_entry: journalEntry,
+                        },
+                      });
+                      await markCompleteMutation.mutateAsync({
+                        dayNumber: selectedDay.day_number,
+                        data: {
+                          content_link: trimmedLink,
+                          journal_entry: journalEntry,
+                        },
+                      });
                       setSelectedDay(null);
                     }
                   }}
